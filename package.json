@@ -39,8 +39,15 @@
     },
     "client": {
       "platform": "web",
-      "inject": []
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
     }
   },
-  "author": "cholf5 <cholf5@hotmail.com>"
+  "author": "cholf5 <cholf5@hotmail.com>",
+  "devDependencies": {
+    "esbuild": "^0.25.12"
+  }
 }
