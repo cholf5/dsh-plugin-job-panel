@@ -7,6 +7,29 @@
  * product's dsw tokens so dark/light themes apply unchanged.
  */
 
+/**
+ * Background-jobs popover row affordances. The rows are the official
+ * dsh-client-ui-jobs popover's `<li>` elements, enhanced (see
+ * ./enhance-dropdown.js) with a `data-job-panel-id` attribute — never with
+ * injected child elements, so React re-rendering keeps working untouched.
+ */
+export const DROPDOWN_CSS = `
+ul li[data-job-panel-id] {
+  cursor: pointer;
+}
+ul li[data-job-panel-id]:hover {
+  background: var(--dsw-alias-fill-l2);
+}
+ul li[data-job-panel-id]::after {
+  content: '\\203A';
+  flex: none;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 14px;
+}
+`;
+
 const STYLE_TAG_ID = "dsh-plugin-job-panel/styles";
 
 /** Panel body styles, scoped under the plugin's root class. */

@@ -17,8 +17,9 @@
  */
 
 import { NS, en, zh } from "./locale.js";
+import { createDropdownEnhancement } from "./enhance-dropdown.js";
 import { JobPanel } from "./panel.jsx";
-import { PANEL_CSS, ensureStyles } from "./styles.js";
+import { DROPDOWN_CSS, PANEL_CSS, ensureStyles } from "./styles.js";
 
 /** The tab type identity — the package name, the natural value per the seat contract. */
 const TAB_TYPE_ID = "dsh-plugin-job-panel";
@@ -41,7 +42,7 @@ const inject = ["slots", "locale", "sidebarRight", "sidebarRightTabs"];
  */
 function apply(ctx) {
 	ctx.effect(
-		() => ensureStyles(PANEL_CSS),
+		() => ensureStyles(`${PANEL_CSS}\n${DROPDOWN_CSS}`),
 		"job-panel: styles",
 	);
 	ctx.effect(
@@ -79,6 +80,21 @@ function apply(ctx) {
 			inject: (sessionId) => ({ sessionId })
 		}, JobPanel)),
 		"job-panel: sidebar tab body",
+	);
+
+	// Make the official background-jobs popover rows clickable: a row click
+	// opens (or re-navigates) the job-output page tab for that job. The
+	// enhancement is the documented no-seat fallback; its detection contract
+	// is version-sensitive and re-checked on dsh upgrades.
+	ctx.effect(
+		() => createDropdownEnhancement({
+			openTab: (kind, options) => {
+				const sidebarRight = /** @type {any} */ (ctx).sidebarRight;
+				if (sidebarRight === undefined || sidebarRight === null) return;
+				sidebarRight.openTab(kind, options);
+			}
+		}),
+		"job-panel: popover row enhancement",
 	);
 }
 
