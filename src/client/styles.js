@@ -150,6 +150,7 @@ export const PANEL_CSS = `
 .jp-ghostButton:disabled { opacity: 0.5; cursor: default; }
 .jp-stopButton {
   flex: none;
+  margin-left: auto;
   border: 0;
   cursor: pointer;
   border-radius: 6px;

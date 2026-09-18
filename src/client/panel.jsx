@@ -18,7 +18,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
-import { fetchFull, fetchOutput } from "./api.js";
+import { fetchFull, fetchOutput, postStop } from "./api.js";
 import { createOutputBuffer, textToLines } from "./output-buffer.js";
 import { OutputView } from "./output-view.jsx";
 
@@ -103,6 +103,12 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 	const [fullState, setFullState] = useState("idle");
 	/** Earliest-line count shown when the spill head itself exceeded the cap. */
 	const [spillNoticeLines, setSpillNoticeLines] = useState(0);
+	/**
+	 * Stop control lifecycle: idle → armed (second click confirms) → requested
+	 * (kill accepted, waiting for the registry to settle) → finished/failed.
+	 */
+	const [stopState, setStopState] = useState("idle");
+	const disarmTimerRef = useRef(undefined);
 	/** Ticking clock for the live duration. */
 	const [now, setNow] = useState(() => Date.now());
 	/** Copy feedback latch. */
@@ -121,7 +127,15 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 		setBufferState(bufferRef.current.snapshot());
 		setLoadFailed(false);
 		setFullState("idle");
+		setStopState("idle");
+		if (disarmTimerRef.current !== undefined) clearTimeout(disarmTimerRef.current);
+		disarmTimerRef.current = undefined;
 	}, [jobId]);
+
+	// Clear the armed-stop timer on unmount.
+	useEffect(() => () => {
+		if (disarmTimerRef.current !== undefined) clearTimeout(disarmTimerRef.current);
+	}, []);
 
 	// The poll loop: offsets belong to this component's buffer (kept across
 	// hide/show); aborts on unmount, job switch, or hide. One extra flush
@@ -252,6 +266,46 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 		}
 	};
 
+	/**
+	 * Stop control: first click arms the button for 3 seconds, the second
+	 * click confirms and POSTs the stop. The host resolves the owner session
+	 * it recorded at start time (the browser sessionId is only a fallback for
+	 * jobs this plugin did not observe). After an accepted request the status
+	 * flips through the poll loop; the registry suppresses the model's
+	 * completion notice for human kills — an accepted official seam gap.
+	 */
+	const onStopClick = async () => {
+		if (!live || jobId === undefined) return;
+		if (stopState !== "armed") {
+			setStopState("armed");
+			if (disarmTimerRef.current !== undefined) clearTimeout(disarmTimerRef.current);
+			disarmTimerRef.current = setTimeout(() => {
+				disarmTimerRef.current = undefined;
+				setStopState((current) => (current === "armed" ? "idle" : current));
+			}, 3000);
+			return;
+		}
+		if (disarmTimerRef.current !== undefined) {
+			clearTimeout(disarmTimerRef.current);
+			disarmTimerRef.current = undefined;
+		}
+		setStopState("requested");
+		try {
+			const result = await postStop({ jobId, sessionId });
+			setStopState(result?.result === "already-finished" ? "finished" : "requested");
+		} catch {
+			setStopState("failed");
+			setTimeout(() => setStopState((current) => (current === "failed" ? "idle" : current)), 3000);
+		}
+	};
+
+	/** The stop button's label per lifecycle state. */
+	const stopLabel = stopState === "armed" ? t("stop.confirm")
+		: stopState === "requested" ? t("stop.requested")
+		: stopState === "finished" ? t("stop.alreadyFinished")
+		: stopState === "failed" ? t("stop.failed")
+		: t("stop.idle");
+
 	if (jobId === undefined) {
 		return (
 			<div className="jp-root">
@@ -269,6 +323,16 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 					<span className="jp-label" title={snapshot?.label ?? command}>{snapshot?.label ?? command ?? jobId}</span>
 					{status !== undefined ? <span>{statusLabel(status, t)}</span> : null}
 					{elapsed !== undefined ? <span className="jp-duration">{elapsed}</span> : null}
+					{live ? (
+						<button
+							type="button"
+							className={`jp-stopButton${stopState === "armed" ? " jp-stopArmed" : ""}`}
+							onClick={onStopClick}
+							disabled={stopState === "requested"}
+						>
+							{stopLabel}
+						</button>
+					) : null}
 				</div>
 				<div className="jp-meta">
 					{snapshot?.startedAt !== undefined ? <span>{t("meta.startedAt")} {formatTime(snapshot.startedAt)}</span> : null}
