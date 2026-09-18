@@ -1,0 +1,7 @@
+# The dsh-plugin-job-panel bundle patch: adds the plugin's Loader row to any
+# profile that installs this package. Applied in dsh.profile.bundles order,
+# after the built-in bundle layers and before the profile's own cordis.patch.yml.
+
+- insert:
+    - id: job-panel
+      name: dsh-plugin-job-panel
