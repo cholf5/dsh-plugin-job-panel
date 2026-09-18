@@ -18,8 +18,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
-import { fetchOutput } from "./api.js";
-import { createOutputBuffer } from "./output-buffer.js";
+import { fetchFull, fetchOutput } from "./api.js";
+import { createOutputBuffer, textToLines } from "./output-buffer.js";
 import { OutputView } from "./output-view.jsx";
 
 /** DOM scrollback cap: at most this many lines stay rendered (iterm2-style). */
@@ -99,6 +99,10 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 	const bufferRef = useRef(createOutputBuffer({ maxLines: MAX_LINES }));
 	/** Set once a poll cycle failed; cleared on the next successful poll. */
 	const [loadFailed, setLoadFailed] = useState(false);
+	/** Full-history load lifecycle: idle → loading → done/failed/truncated. */
+	const [fullState, setFullState] = useState("idle");
+	/** Earliest-line count shown when the spill head itself exceeded the cap. */
+	const [spillNoticeLines, setSpillNoticeLines] = useState(0);
 	/** Ticking clock for the live duration. */
 	const [now, setNow] = useState(() => Date.now());
 	/** Copy feedback latch. */
@@ -116,6 +120,7 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 		setData(undefined);
 		setBufferState(bufferRef.current.snapshot());
 		setLoadFailed(false);
+		setFullState("idle");
 	}, [jobId]);
 
 	// The poll loop: offsets belong to this component's buffer (kept across
@@ -202,6 +207,51 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 		}
 	};
 
+	/**
+	 * Load the spill-backed full history and splice it in front of the live
+	 * tail. Per stream the server returns the spill head (capped) plus the
+	 * whole retained tail with its byte facts; the gap between head and tail
+	 * is detected from those byte counts and rendered as a divider. Polling
+	 * resumes from the tail's offsets, so nothing after this point is lost.
+	 */
+	const loadFullHistory = async () => {
+		if (fullState === "loading" || jobId === undefined) return;
+		setFullState("loading");
+		try {
+			const payload = await fetchFull({ jobId, sessionId });
+			const buffer = bufferRef.current;
+			const lines = [];
+			let omittedCount = 0;
+			let spillNoticeCount = 0;
+			const offsets = { stdout: 0, stderr: 0 };
+			for (const stream of ["stdout", "stderr"]) {
+				const project = payload?.[stream];
+				if (project === null || project === undefined) continue;
+				const stderr = stream === "stderr";
+				const tail = project.tail;
+				if (tail === null || tail === undefined) continue;
+				const spill = project.spill;
+				if (spill !== null && spill !== undefined) {
+					const spillLines = textToLines(spill.text, stderr);
+					lines.push(...spillLines);
+					if (spill.truncated) spillNoticeCount += spillLines.length;
+					// Head covered [0, spill.size); tail covers the retained tail.
+					// A gap exists when the two byte ranges do not meet.
+					const covered = spill.size + buffer.byteLength(tail.text);
+					if (covered < tail.nextOffset - 1024) lines.push({ text: t("output.full.gap"), stderr: false });
+				}
+				lines.push(...textToLines(tail.text, stderr));
+				offsets[stream] = tail.nextOffset;
+			}
+			buffer.replace(lines, offsets, omittedCount);
+			setBufferState(buffer.snapshot());
+			setSpillNoticeLines(spillNoticeCount);
+			setFullState(spillNoticeCount > 0 ? "truncated" : "done");
+		} catch {
+			setFullState("failed");
+		}
+	};
+
 	if (jobId === undefined) {
 		return (
 			<div className="jp-root">
@@ -237,7 +287,21 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 			<div className="jp-body">
 				{!tapped ? <p className="jp-notice">{t("meta.untapped.note")}</p> : null}
 				{tapped && !hasStreams ? <p className="jp-notice">{t("meta.noStream")}</p> : null}
-				{tapped && hasStreams ? <OutputView snapshot={bufferState} t={t} hasStreams={hasStreams} hasLines={hasLines} /> : null}
+				{tapped && hasStreams ? (
+					<>
+						<div className="jp-outputToolbar">
+							{fullState === "truncated" ? <span>{t("output.full.spillTruncated", { count: spillNoticeLines })}</span> : null}
+							{fullState === "failed" ? <span>{t("output.full.failed")}</span> : null}
+							<span style={{ flex: 1 }} />
+							{(fullState === "idle" || fullState === "failed") && (bufferState.stdoutSpillPath !== undefined || bufferState.stderrSpillPath !== undefined) ? (
+								<button type="button" className="jp-ghostButton" onClick={loadFullHistory} disabled={fullState === "loading"}>
+									{fullState === "loading" ? t("output.full.loading") : t("output.full.load")}
+								</button>
+							) : null}
+						</div>
+						<OutputView snapshot={bufferState} t={t} hasStreams={hasStreams} hasLines={hasLines} />
+					</>
+				) : null}
 			</div>
 		</div>
 	);

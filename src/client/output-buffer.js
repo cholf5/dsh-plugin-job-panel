@@ -51,6 +51,8 @@ export function createOutputBuffer({ maxLines }) {
 	let stdoutSpillPath;
 	let stderrSpillPath;
 	let hasGap = false;
+	/** Effective cap — lifted when the full history replaces the buffer. */
+	let cap = maxLines;
 
 	function pushLine(text, stderr) {
 		if (text.length === 0) return;
@@ -64,8 +66,8 @@ export function createOutputBuffer({ maxLines }) {
 	}
 
 	function enforceCap() {
-		if (lines.length <= maxLines) return;
-		const drop = lines.length - maxLines;
+		if (lines.length <= cap) return;
+		const drop = lines.length - cap;
 		lines = lines.slice(drop);
 		omitted += drop;
 		hasGap = true;
@@ -114,6 +116,8 @@ export function createOutputBuffer({ maxLines }) {
 		},
 		/**
 		 * Replace the whole buffer with pre-built lines (full-history load).
+		 * The cap lifts to hold the replacement (plus growth headroom), so
+		 * subsequent poll appends do not re-trim the explicitly loaded view.
 		 * @param {OutputLine[]} next - lines to show.
 		 * @param {{ stdout: number, stderr: number }} offsets - resume offsets.
 		 * @param {number} omittedCount - head lines the view already knows it dropped.
@@ -124,6 +128,7 @@ export function createOutputBuffer({ maxLines }) {
 			omitted = omittedCount;
 			stdoutOffset = offsets.stdout;
 			stderrOffset = offsets.stderr;
+			cap = Math.max(cap, next.length + 512);
 		},
 		/** @returns {OutputBufferSnapshot} */
 		snapshot() {
