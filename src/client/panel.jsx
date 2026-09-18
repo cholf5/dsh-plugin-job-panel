@@ -5,15 +5,28 @@
  * the framework-bound `useTabInfo` hook and the namespace translator `t` as
  * props, and the slot registration's inject factory contributes `sessionId`.
  *
- * This commit renders the shell: kind chip, live status, ticking duration,
- * start/finish facts, and the command block (the producer label — for bash
- * jobs the command itself — plus the spawn cwd when captured). The output
- * stream view and the stop control arrive in their own commits.
+ * Data flow: while the tab is visible the panel polls the host's output route
+ * every 500ms with the buffer's own byte offsets (cursor-free reads — the
+ * model's job registry read cursor is never touched). Each poll appends the
+ * stdout/stderr deltas into a bounded iterm2-style buffer and refreshes the
+ * registry snapshot that drives the header. Polling pauses while the tab is
+ * hidden and stops one flush cycle after the job settles.
+ *
+ * The stop control arrives in its own commit; this commit owns the output
+ * stream view.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
 import { fetchOutput } from "./api.js";
+import { createOutputBuffer } from "./output-buffer.js";
+import { OutputView } from "./output-view.jsx";
+
+/** DOM scrollback cap: at most this many lines stay rendered (iterm2-style). */
+const MAX_LINES = 2000;
+
+/** Poll cadence while the tab is visible and the job is live. */
+const POLL_INTERVAL_MS = 500;
 
 /** Wire status → official dot states (matches dsh-client-ui-jobs semantics). */
 const DOT_STATES = {
@@ -72,9 +85,19 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 	const { tab } = useTabInfo();
 	const params = tab?.navigation?.params;
 	const jobId = typeof params?.jobId === "string" && params.jobId.length > 0 ? params.jobId : undefined;
+	const visible = tab?.visible !== false;
 
-	/** One output response (meta + snapshot); refreshed by the poll loop. */
+	/** Latest output response (meta + snapshot). */
 	const [data, setData] = useState(undefined);
+	/** Latest output buffer snapshot (lines, offsets, lossy/spill facts). */
+	const [bufferState, setBufferState] = useState(() => createOutputBuffer({ maxLines: MAX_LINES }).snapshot());
+	/**
+	 * The live buffer, kept outside the poll effect so hiding the panel (or a
+	 * transient unmount) does not lose the accumulated scrollback; recreated
+	 * only when the tab navigates to another job.
+	 */
+	const bufferRef = useRef(createOutputBuffer({ maxLines: MAX_LINES }));
+	/** Set once a poll cycle failed; cleared on the next successful poll. */
 	const [loadFailed, setLoadFailed] = useState(false);
 	/** Ticking clock for the live duration. */
 	const [now, setNow] = useState(() => Date.now());
@@ -85,26 +108,70 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 	const meta = data?.meta ?? undefined;
 	const status = snapshot?.status;
 	const live = status !== undefined && isLive(status);
+	const tapped = data?.tapped === true;
 
+	// Reset everything when the tab navigates to another job.
 	useEffect(() => {
+		bufferRef.current = createOutputBuffer({ maxLines: MAX_LINES });
 		setData(undefined);
+		setBufferState(bufferRef.current.snapshot());
 		setLoadFailed(false);
 	}, [jobId]);
 
-	// One-shot load of the job's facts for this shell commit.
+	// The poll loop: offsets belong to this component's buffer (kept across
+	// hide/show); aborts on unmount, job switch, or hide. One extra flush
+	// cycle runs after the job settles so the final delta is not missed.
 	useEffect(() => {
-		if (jobId === undefined) return;
+		if (jobId === undefined || !visible) return;
+		let cancelled = false;
+		let settled = false;
+		let flushPending = false;
+		let inFlight = false;
 		const controller = new AbortController();
-		fetchOutput({ jobId, sessionId, stdoutOffset: 0, stderrOffset: 0, signal: controller.signal })
-			.then((payload) => {
+		const buffer = bufferRef.current;
+
+		const tick = async () => {
+			if (cancelled || inFlight) return;
+			inFlight = true;
+			try {
+				const offsets = buffer.snapshot();
+				const payload = await fetchOutput({
+					jobId,
+					sessionId,
+					stdoutOffset: offsets.stdoutOffset,
+					stderrOffset: offsets.stderrOffset,
+					signal: controller.signal
+				});
+				if (cancelled) return;
+				buffer.append("stdout", payload.stdout);
+				buffer.append("stderr", payload.stderr);
 				setData(payload);
+				setBufferState(buffer.snapshot());
 				setLoadFailed(false);
-			})
-			.catch(() => {
+				const nextStatus = payload.snapshot?.status;
+				if (nextStatus !== undefined && !isLive(nextStatus)) {
+					if (flushPending) settled = true;
+					else flushPending = true;
+				}
+			} catch {
 				if (!controller.signal.aborted) setLoadFailed(true);
-			});
-		return () => controller.abort();
-	}, [jobId, sessionId]);
+			} finally {
+				inFlight = false;
+			}
+		};
+
+		const timer = setInterval(() => {
+			if (settled) clearInterval(timer);
+			else void tick();
+		}, POLL_INTERVAL_MS);
+		void tick();
+
+		return () => {
+			cancelled = true;
+			controller.abort();
+			clearInterval(timer);
+		};
+	}, [jobId, sessionId, visible]);
 
 	useEffect(() => {
 		if (!live) return;
@@ -121,6 +188,8 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 
 	const command = meta?.label ?? snapshot?.label;
 	const cwd = meta?.spawn?.cwd;
+	const hasStreams = tapped && (data?.stdout !== null || data?.stderr !== null);
+	const hasLines = bufferState.lines.length > 0;
 
 	const copyCommand = async () => {
 		if (command === undefined) return;
@@ -165,7 +234,11 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 				{cwd !== undefined ? <div className="jp-meta"><span>{cwd}</span></div> : null}
 				{loadFailed ? <div className="jp-notice">{t("job.missing")}</div> : null}
 			</div>
-			<div className="jp-body" />
+			<div className="jp-body">
+				{!tapped ? <p className="jp-notice">{t("meta.untapped.note")}</p> : null}
+				{tapped && !hasStreams ? <p className="jp-notice">{t("meta.noStream")}</p> : null}
+				{tapped && hasStreams ? <OutputView snapshot={bufferState} t={t} hasStreams={hasStreams} hasLines={hasLines} /> : null}
+			</div>
 		</div>
 	);
 }
