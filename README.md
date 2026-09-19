@@ -41,6 +41,23 @@ So this plugin observes one layer below:
 
 The three exact routes on the shared authenticated `/api` channel serve that data: `GET /api/job-panel/output` (incremental reads + snapshot), `GET /api/job-panel/full` (spill head + retained tail), `POST /api/job-panel/stop` (kill). Requests pass the connection package's trust fence and cookie authentication before dispatch.
 
+## Terminal colors
+
+Captured streams are plain text **by design**: the harness runs every command with `NO_COLOR=1`, `TERM=dumb`, and no TTY so the model sees clean text. The panel rebuilds the color experience client-side in two layers:
+
+1. **Semantic levels (always on).** Plain log lines render by their level vocabulary — `error/failed/fatal/exception/panic` red, `warn/deprecated` amber, `debug/trace/verbose` dimmed — the console-logger convention (.NET, serilog, log4j, …).
+2. **ANSI passthrough (when present).** If a job's output carries real escape sequences, the panel parses the SGR 16-color set plus bold/dim/italic/underline and renders them with the state carried across lines exactly like a terminal (256-color and truecolor sequences are consumed but unmapped).
+
+To see true terminal colors for a specific job, force them in the command itself — the common detectors honor `FORCE_COLOR` over `NO_COLOR`:
+
+```sh
+FORCE_COLOR=1 dotnet run            # .NET / chalk / most Node tools
+CLICOLOR_FORCE=1 ./mytool           # GNU-style tools
+tool --color=always …               # tools with explicit flags
+```
+
+The model's own `job_output` reads the same captured stream — forcing color on a job whose output the model will read puts escape sequences in front of the model too. That tradeoff belongs to the command author.
+
 ## Known limitations
 
 - **Non-bash jobs** (one-shot background subagents, …) are in-process producers with no subprocess handle to observe: their panel shows metadata and stop, with a "no output stream" note.
