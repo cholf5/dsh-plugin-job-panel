@@ -10,17 +10,22 @@
  */
 
 /**
- * Semantic level classes, checked in priority order.
- *
- * Patterns match anywhere in the line, so incidental prose ("0 errors") also
- * colors — accepted here for the same reason console formatters err colorful:
- * the vocabulary in real build/log output overwhelmingly appears AS a level
- * when it appears at all. (Tightening is tracked as its own change.)
+ * Anchor for a level token: the word must stand in the line's leading
+ * region — after optional decoration characters, one bracket group, an
+ * optional timestamp, and at most ONE leading word ("build failed" colors,
+ * "the build failed" is prose). The single-word allowance deliberately keeps
+ * two-word summaries colorable while killing the common false positives:
+ * numeric counts ("0 errors, 0 warnings" — the digit cannot start the
+ * leading word) and level words buried deeper in a sentence.
  */
+const LEVEL_ANCHOR = "^\\s*[>*\\-·✖✔]*\\s*(?:\\[[^\\]]*]\\s*)?(?:\\d{4}[-/]\\d{2}[-/]\\d{2}[T ]\\S*|\\d{1,2}:\\d{2}(?::\\d{2})?)?\\s*(?:[A-Za-z][\\w'.-]{0,11}\\s+)?";
+
+/** Semantic level classes, checked in priority order. The level word may
+ * stand bare or inside square brackets ("[WARN] …"). */
 const LEVEL_PATTERNS = [
-	["jp-log-error", /\b(errors?|failed?|failures?|fatal|exception|unhandled|panic|aborted)\b/i],
-	["jp-log-warn", /\b(warnings?|warn|deprecated)\b/i],
-	["jp-log-dim", /\b(debug|trace|verbose)\b/i]
+	["jp-log-error", new RegExp(LEVEL_ANCHOR + "\\[?(?:errors?|failed?|failures?|fatal|exception|unhandled|panic|aborted)\\b\\]?", "i")],
+	["jp-log-warn", new RegExp(LEVEL_ANCHOR + "\\[?(?:warnings?|warn|deprecated)\\b\\]?", "i")],
+	["jp-log-dim", new RegExp(LEVEL_ANCHOR + "\\[?(?:debug|trace|verbose)\\b\\]?", "i")]
 ];
 
 /**
