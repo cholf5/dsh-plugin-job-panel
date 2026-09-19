@@ -18,9 +18,10 @@ ul li[data-job-panel-id] {
   cursor: pointer;
 }
 ul li[data-job-panel-id]:hover {
-  /* fill-l2 sits too close to the popover's specific-menu background to be
-     visible; fill-l3 is the next step up (used by the panel's own buttons). */
-  background: var(--dsw-alias-fill-l3, var(--dsw-alias-fill-l2));
+  /* The design platform defines no fill-l* alias tokens, so any fill-l*
+     var() is an invalid declaration and the hover painted nothing; use the
+     shipped interactive hover alias (module-platform as the fallback). */
+  background: var(--dsw-alias-interactive-bg-hover, var(--dsw-alias-bg-module-platform));
 }
 ul li[data-job-panel-id]::after {
   content: '\\203A';
@@ -60,7 +61,7 @@ export const PANEL_CSS = `
 }
 .jp-kind {
   flex: none;
-  background: var(--dsw-alias-fill-l2);
+  background: var(--dsw-alias-bg-module-platform);
   color: var(--dsw-alias-label-secondary);
   border-radius: 5px;
   padding: 0 6px;
@@ -88,7 +89,7 @@ export const PANEL_CSS = `
 .jp-commandBlock {
   margin: 0;
   padding: 8px 10px;
-  background: var(--dsw-alias-fill-l1);
+  background: var(--dsw-alias-markdown-code-block);
   border-radius: 8px;
   font-family: var(--dsw-font-mono);
   font-size: 12px;
@@ -113,7 +114,7 @@ export const PANEL_CSS = `
   font-size: 11px;
   line-height: 18px;
 }
-.jp-copyButton:hover { color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-fill-l2); }
+.jp-copyButton:hover { color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-module-platform); }
 .jp-body {
   flex: 1;
   min-height: 0;
@@ -130,7 +131,7 @@ export const PANEL_CSS = `
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: var(--dsw-alias-fill-l1);
+  background: var(--dsw-alias-markdown-code-block);
   margin: 0 14px 14px;
   border-radius: 8px;
 }
@@ -163,7 +164,7 @@ export const PANEL_CSS = `
 }
 .jp-ghostButton {
   border: 0;
-  background: var(--dsw-alias-fill-l2);
+  background: var(--dsw-alias-bg-module-platform);
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   border-radius: 6px;
@@ -171,7 +172,7 @@ export const PANEL_CSS = `
   font-size: 11px;
   line-height: 18px;
 }
-.jp-ghostButton:hover { background: var(--dsw-alias-fill-l3, var(--dsw-alias-fill-l2)); color: var(--dsw-alias-label-primary); }
+.jp-ghostButton:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .jp-ghostButton:disabled { opacity: 0.5; cursor: default; }
 .jp-stopButton {
   flex: none;
@@ -182,10 +183,10 @@ export const PANEL_CSS = `
   padding: 3px 10px;
   font-size: 12px;
   line-height: 18px;
-  background: var(--dsw-alias-fill-l2);
+  background: var(--dsw-alias-bg-module-platform);
   color: var(--dsw-alias-label-primary);
 }
-.jp-stopButton:hover { background: var(--dsw-alias-fill-l3, var(--dsw-alias-fill-l2)); }
+.jp-stopButton:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .jp-stopButton.jp-stopArmed {
   background: var(--dsw-alias-label-primary);
   color: var(--dsw-specific-menu, #fff);
