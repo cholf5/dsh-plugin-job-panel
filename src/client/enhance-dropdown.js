@@ -25,8 +25,12 @@
  */
 const POPOVER_LABELS = new Set(["后台任务", "Background jobs"]);
 
-/** Attribute stamped on enhanced rows (also the CSS hook). */
-const DATA_ATTRIBUTE = "dataJobPanelId";
+/**
+ * Attribute stamped on enhanced rows (also the CSS hook). `setAttribute`
+ * stores the name verbatim — no camelCase → kebab-case conversion — so the
+ * kebab-case form is used here AND in styles.js (`li[data-job-panel-id]`).
+ */
+const DATA_ATTRIBUTE = "data-job-panel-id";
 
 /**
  * Read the React fiber of a DOM node and return its key.

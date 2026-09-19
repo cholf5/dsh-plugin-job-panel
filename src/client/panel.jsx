@@ -97,8 +97,12 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 	 * only when the tab navigates to another job.
 	 */
 	const bufferRef = useRef(createOutputBuffer({ maxLines: MAX_LINES }));
-	/** Set once a poll cycle failed; cleared on the next successful poll. */
-	const [loadFailed, setLoadFailed] = useState(false);
+	/**
+	 * Last poll failure: undefined while healthy, otherwise the failing status
+	 * code (or the string "network") — surfaced in the notice so a 404 (host
+	 * half absent) is distinguishable from a 5xx (route-internal error).
+	 */
+	const [loadFailed, setLoadFailed] = useState(undefined);
 	/** Full-history load lifecycle: idle → loading → done/failed/truncated. */
 	const [fullState, setFullState] = useState("idle");
 	/** Earliest-line count shown when the spill head itself exceeded the cap. */
@@ -125,7 +129,7 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 		bufferRef.current = createOutputBuffer({ maxLines: MAX_LINES });
 		setData(undefined);
 		setBufferState(bufferRef.current.snapshot());
-		setLoadFailed(false);
+		setLoadFailed(undefined);
 		setFullState("idle");
 		setStopState("idle");
 		if (disarmTimerRef.current !== undefined) clearTimeout(disarmTimerRef.current);
@@ -166,14 +170,16 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 				buffer.append("stderr", payload.stderr);
 				setData(payload);
 				setBufferState(buffer.snapshot());
-				setLoadFailed(false);
+				setLoadFailed(undefined);
 				const nextStatus = payload.snapshot?.status;
 				if (nextStatus !== undefined && !isLive(nextStatus)) {
 					if (flushPending) settled = true;
 					else flushPending = true;
 				}
-			} catch {
-				if (!controller.signal.aborted) setLoadFailed(true);
+			} catch (error) {
+				if (controller.signal.aborted) return;
+				const match = /with (\d+)$/.exec(String(error?.message ?? ""));
+				setLoadFailed(match !== null ? Number(match[1]) : "network");
 			} finally {
 				inFlight = false;
 			}
@@ -346,7 +352,7 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 					</div>
 				) : null}
 				{cwd !== undefined ? <div className="jp-meta"><span>{cwd}</span></div> : null}
-				{loadFailed ? <div className="jp-notice">{t("job.missing")}</div> : null}
+				{loadFailed !== undefined ? <div className="jp-notice">{t("meta.fetchFailed", { status: String(loadFailed) })}</div> : null}
 			</div>
 			<div className="jp-body">
 				{!tapped ? <p className="jp-notice">{t("meta.untapped.note")}</p> : null}
