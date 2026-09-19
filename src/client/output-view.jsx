@@ -54,9 +54,12 @@ export function OutputView({ snapshot, t, hasStreams, hasLines }) {
 				) : null}
 				{hasStreams && !hasLines ? <div className="jp-divider">{t("output.empty")}</div> : null}
 				<pre className="jp-outputText">
-					{snapshot.lines.map((line, index) => (
-						<span key={index} className={line.stderr ? "jp-stderrText" : undefined}>{`${line.text}\n`}</span>
-					))}
+					{snapshot.lines.map((line, index) => {
+						const cls = [line.stderr ? "jp-stderrText" : "", line.kind ?? ""].filter(Boolean).join(" ") || undefined;
+						return (
+							<span key={index} className={cls}>{`${line.text}\n`}</span>
+						);
+					})}
 				</pre>
 			</div>
 			{!atBottom ? (

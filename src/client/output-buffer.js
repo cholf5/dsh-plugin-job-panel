@@ -7,16 +7,20 @@
  * whole-stream byte coordinates owned by this buffer (the server's readers
  * are cursor-free), so the panel and the model's own reads never interfere.
  *
- * Stream interleaving is arrival-approximate: within one poll the stdout delta
- * is appended before the stderr delta, each line tagged with its stream so the
- * view can style stderr lines. This mirrors what the model sees (stderr in a
- * marked section) rather than promising exact interleaving, which two separate
+ * Line shaping (cross-chunk assembly, semantic level classes) lives in
+ * ./log-line.js — one builder per stream. Stream interleaving is
+ * arrival-approximate: within one poll the stdout delta is appended before
+ * the stderr delta, each line tagged with its stream so the view can style
+ * stderr lines. This mirrors what the model sees (stderr in a marked
+ * section) rather than promising exact interleaving, which two separate
  * byte-accumulating readers cannot reconstruct.
  */
 
+import { createLineBuilder } from "./log-line.js";
+
 /**
- * One rendered output line.
- * @typedef {{ text: string, stderr: boolean }} OutputLine
+ * One rendered output line (see log-line.js for the full shape).
+ * @typedef {{ text: string, stderr: boolean, kind?: string, spans?: Array<{ text: string, cls?: string }> }} OutputLine
  */
 
 /**
@@ -38,7 +42,7 @@ const GAP_LINE = { text: "……", stderr: false };
 /**
  * Create one output buffer.
  * @param {{ maxLines: number }} options
- * @returns {object} buffer with append(stream, read) / snapshot() / appendText().
+ * @returns {object} buffer with append(stream, read) / flush() / snapshot().
  */
 export function createOutputBuffer({ maxLines }) {
 	/** @type {OutputLine[]} */
@@ -54,15 +58,15 @@ export function createOutputBuffer({ maxLines }) {
 	/** Effective cap — lifted when the full history replaces the buffer. */
 	let cap = maxLines;
 
-	function pushLine(text, stderr) {
-		if (text.length === 0) return;
-		const parts = text.split("\n");
-		for (let index = 0; index < parts.length; index += 1) {
-			const piece = parts[index];
-			const last = index === parts.length - 1;
-			if (last && piece.length === 0) break; // trailing newline: no empty final line
-			lines.push({ text: piece, stderr });
-		}
+	const stdoutBuilder = createLineBuilder(false);
+	const stderrBuilder = createLineBuilder(true);
+
+	function builderOf(stream) {
+		return stream === "stderr" ? stderrBuilder : stdoutBuilder;
+	}
+
+	function pushShaped(shaped) {
+		for (const line of shaped) lines.push(line);
 	}
 
 	function enforceCap() {
@@ -83,13 +87,15 @@ export function createOutputBuffer({ maxLines }) {
 		append(stream, read) {
 			if (read === null || read === undefined) return;
 			const stderr = stream === "stderr";
+			const builder = builderOf(stream);
 			if (read.lossy) {
 				// The requested offset slid out of the retained window: the server
 				// returned the whole retained tail, so restart the buffer from it
 				// and mark the discontinuity. The dropped head cannot be counted
 				// precisely, so the omitted counter is left as it was.
 				lines = [];
-				pushLine(GAP_LINE.text, false);
+				builder.reset();
+				lines.push({ ...GAP_LINE });
 				hasGap = true;
 				if (stderr) {
 					stderrOffset = read.nextOffset;
@@ -100,11 +106,11 @@ export function createOutputBuffer({ maxLines }) {
 					stdoutLossy = true;
 					stdoutSpillPath = read.spillPath;
 				}
-				pushLine(read.text, stderr);
+				pushShaped(builder.feed(read.text));
 				enforceCap();
 				return;
 			}
-			pushLine(read.text, stderr);
+			pushShaped(builder.feed(read.text));
 			if (stderr) {
 				stderrOffset = read.nextOffset;
 				if (read.spillPath !== undefined) stderrSpillPath = read.spillPath;
@@ -112,6 +118,16 @@ export function createOutputBuffer({ maxLines }) {
 				stdoutOffset = read.nextOffset;
 				if (read.spillPath !== undefined) stdoutSpillPath = read.spillPath;
 			}
+			enforceCap();
+		},
+		/**
+		 * Emit every stream's pending partial line (call once the job settles,
+		 * so a final line without a trailing newline still shows).
+		 * @returns {void}
+		 */
+		flush() {
+			pushShaped(stdoutBuilder.flush());
+			pushShaped(stderrBuilder.flush());
 			enforceCap();
 		},
 		/**
@@ -152,21 +168,15 @@ export function createOutputBuffer({ maxLines }) {
 }
 
 /**
- * Split pre-formatted stream text into lines tagged by stream (used by the
- * full-history view for spill/tail text).
+ * Shape a whole pre-captured stream text into lines (full-history view) —
+ * fresh builder, whole text, flushed tail.
  * @param {string} text - accumulated stream text.
  * @param {boolean} stderr - whether this text belongs to the stderr stream.
  * @returns {OutputLine[]}
  */
-export function textToLines(text, stderr) {
-	if (text.length === 0) return [];
-	const parts = text.split("\n");
-	const lines = [];
-	for (let index = 0; index < parts.length; index += 1) {
-		const piece = parts[index];
-		const last = index === parts.length - 1;
-		if (last && piece.length === 0) break;
-		lines.push({ text: piece, stderr });
-	}
+export function buildStreamLines(text, stderr) {
+	const builder = createLineBuilder(stderr);
+	const lines = builder.feed(text);
+	lines.push(...builder.flush());
 	return lines;
 }

@@ -148,6 +148,11 @@ export const PANEL_CSS = `
   color: var(--dsw-alias-label-secondary);
   background: color-mix(in srgb, var(--dsw-alias-label-primary) 7%, transparent);
 }
+/* Semantic level classes for plain log lines (console-logger convention).
+   All three tokens are defined in the shipped design platform. */
+.jp-log-error { color: var(--dsw-alias-state-error-primary); }
+.jp-log-warn { color: var(--dsw-alias-state-warn-primary); }
+.jp-log-dim { color: var(--dsw-alias-label-tertiary); }
 .jp-divider {
   margin: 4px 0;
   color: var(--dsw-alias-label-tertiary);

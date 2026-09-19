@@ -19,11 +19,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
 import { fetchFull, fetchOutput, postStop } from "./api.js";
-import { createOutputBuffer, textToLines } from "./output-buffer.js";
+import { buildStreamLines, createOutputBuffer } from "./output-buffer.js";
 import { OutputView } from "./output-view.jsx";
 
 /** DOM scrollback cap: at most this many lines stay rendered (iterm2-style). */
 const MAX_LINES = 2000;
+
+/** Hard render cap for the explicit full-history view (spill head can be megabytes). */
+const MAX_FULL_LINES = 20000;
 
 /** Poll cadence while the tab is visible and the job is live. */
 const POLL_INTERVAL_MS = 500;
@@ -180,8 +183,14 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 				setLoadFailed(undefined);
 				const nextStatus = payload.snapshot?.status;
 				if (nextStatus !== undefined && !isLive(nextStatus)) {
-					if (flushPending) settled = true;
-					else flushPending = true;
+					if (flushPending) {
+						settled = true;
+					} else {
+						flushPending = true;
+						// The settled read may end mid-line; emit the builders'
+						// pending tails so the final line is not held back.
+						buffer.flush();
+					}
 				}
 			} catch (error) {
 				if (controller.signal.aborted) return;
@@ -259,7 +268,7 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 				if (tail === null || tail === undefined) continue;
 				const spill = project.spill;
 				if (spill !== null && spill !== undefined) {
-					const spillLines = textToLines(spill.text, stderr);
+					const spillLines = buildStreamLines(spill.text, stderr);
 					lines.push(...spillLines);
 					if (spill.truncated) spillNoticeCount += spillLines.length;
 					// Head covered [0, spill.size); tail covers the retained tail.
@@ -267,8 +276,12 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 					const covered = spill.size + buffer.byteLength(tail.text);
 					if (covered < tail.nextOffset - 1024) lines.push({ text: t("output.full.gap"), stderr: false });
 				}
-				lines.push(...textToLines(tail.text, stderr));
+				lines.push(...buildStreamLines(tail.text, stderr));
 				offsets[stream] = tail.nextOffset;
+			}
+			if (lines.length > MAX_FULL_LINES) {
+				omittedCount += lines.length - MAX_FULL_LINES;
+				lines = lines.slice(lines.length - MAX_FULL_LINES);
 			}
 			buffer.replace(lines, offsets, omittedCount);
 			setBufferState(buffer.snapshot());
