@@ -355,7 +355,8 @@ export function JobPanel({ useTabInfo, t, sessionId }) {
 				{loadFailed !== undefined ? <div className="jp-notice">{t("meta.fetchFailed", { status: String(loadFailed) })}</div> : null}
 			</div>
 			<div className="jp-body">
-				{!tapped ? <p className="jp-notice">{t("meta.untapped.note")}</p> : null}
+				{data !== undefined && data.tapped === false ? <p className="jp-notice">{t("meta.untapped.note")}</p> : null}
+				{data === undefined && loadFailed === undefined ? <p className="jp-notice">{t("output.loading")}</p> : null}
 				{tapped && !hasStreams ? <p className="jp-notice">{t("meta.noStream")}</p> : null}
 				{tapped && hasStreams ? (
 					<>

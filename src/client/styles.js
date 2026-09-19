@@ -18,7 +18,9 @@ ul li[data-job-panel-id] {
   cursor: pointer;
 }
 ul li[data-job-panel-id]:hover {
-  background: var(--dsw-alias-fill-l2);
+  /* fill-l2 sits too close to the popover's specific-menu background to be
+     visible; fill-l3 is the next step up (used by the panel's own buttons). */
+  background: var(--dsw-alias-fill-l3, var(--dsw-alias-fill-l2));
 }
 ul li[data-job-panel-id]::after {
   content: '\\203A';
