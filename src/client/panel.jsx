@@ -3,7 +3,7 @@
  *
  * Registered under the keyed `sidebar.right.pane.tab` seat; the seat injects
  * the framework-bound `useTabInfo` hook and the namespace translator `t` as
- * props, and the slot registration's inject factory contributes `sessionId`.
+ * props; the session id arrives as a seat standard prop.
  *
  * Data flow: while the tab is visible the panel polls the host's output route
  * every 500ms with the buffer's own byte offsets (cursor-free reads — the
@@ -75,13 +75,20 @@ function formatTime(epochMs) {
 
 /**
  * The panel body for one job.
- * @param {object} props - seat-injected currency plus the inject-factory face.
+ *
+ * `sessionId` and `useSessions` arrive as seat standard props (the
+ * `sidebar.right.pane.tab` seat injects them alongside `useTabInfo`/`t` per
+ * the seat's standardProps contract); `t` is the namespace translator from
+ * the registration's `locale`.
+ *
+ * @param {object} props - seat-injected currency.
  * @param {() => { sidebar: unknown, panel: unknown, tab: object }} props.useTabInfo
  * @param {(key: string, params?: object) => string} props.t
  * @param {string | undefined} props.sessionId - the session this surface belongs to.
  * @returns {object} React element.
  */
-export function JobPanel({ useTabInfo, t, sessionId }) {
+export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
+	const sessionId = typeof rawSessionId === "string" && rawSessionId.length > 0 ? rawSessionId : undefined;
 	const { tab } = useTabInfo();
 	const params = tab?.navigation?.params;
 	const jobId = typeof params?.jobId === "string" && params.jobId.length > 0 ? params.jobId : undefined;

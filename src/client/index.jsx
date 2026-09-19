@@ -76,8 +76,10 @@ function apply(ctx) {
 		() => ctx.slots.inject("sidebar.right.pane.tab", () => ctx.slots.register({
 			name: "sidebar.right.pane.tab",
 			key: TAB_TYPE_ID,
-			locale: NS,
-			inject: (sessionId) => ({ sessionId })
+			locale: NS
+			// No inject factory: the seat delivers sessionId / useSessions /
+			// useTabInfo / t as standard props (see the seat's standardProps
+			// contract); the panel takes what it needs from props alone.
 		}, JobPanel)),
 		"job-panel: sidebar tab body",
 	);
