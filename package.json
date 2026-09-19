@@ -49,5 +49,9 @@
   "author": "cholf5 <cholf5@hotmail.com>",
   "devDependencies": {
     "esbuild": "^0.25.12"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0"
   }
 }

@@ -1,70 +1,106 @@
 /**
  * dsh-plugin-job-panel — output view.
  *
- * Renders the output buffer's snapshot inside one scrollport with iterm2-style
- * behavior: auto-follow sticks to the bottom while new deltas land, scrolling
- * up disengages it (a floating "jump to bottom" affordance appears), and the
- * buffer's cap notice renders as a head divider. stderr lines are styled so
- * the two streams stay legible without promising exact interleaving.
+ * An embedded xterm.js terminal (see ./terminal.js): raw stream deltas are
+ * fed to it and it renders everything a real terminal would — SGR colors
+ * incl. 256/truecolor, OSC, C1 escapes, carriage-return progress redraws —
+ * inside the panel's token-painted surface. Auto-follow sticks to the bottom
+ * while new deltas land; scrolling up disengages it (a floating "jump to
+ * bottom" affordance appears). The bounded history is the terminal's own
+ * scrollback, so old lines fall off exactly like an iterm2 scrollport.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { createJobTerminal } from "./terminal.js";
 
 /**
  * @param {object} props
- * @param {import("./output-buffer.js").OutputBufferSnapshot} props.snapshot - buffer snapshot.
  * @param {(key: string, params?: object) => string} props.t - namespace translator.
- * @param {boolean} props.hasStreams - whether the job exposed collected streams at all.
- * @param {boolean} props.hasLines - whether any output line is visible.
- * @returns {object} React element.
+ * @param {boolean} props.hasOutput - whether any stream text reached the terminal.
+ * @param {object} props.ref - imperative surface: writeStream / flushStream / flushAll /
+ *   resetStream / writeMarker / reset / setScrollback.
  */
-export function OutputView({ snapshot, t, hasStreams, hasLines }) {
-	const scrollRef = useRef(null);
+export const OutputView = forwardRef(function OutputView({ t, hasOutput }, ref) {
+	const hostRef = useRef(null);
+	const terminalRef = useRef(null);
 	const followRef = useRef(true);
 	const [atBottom, setAtBottom] = useState(true);
 
-	const onScroll = () => {
-		const element = scrollRef.current;
-		if (element === null) return;
-		const bottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 8;
-		followRef.current = bottom;
-		setAtBottom(bottom);
+	useImperativeHandle(ref, () => ({
+		writeStream: (stream, text) => {
+			terminalRef.current?.writeStream(stream, text);
+			followIfEngaged();
+		},
+		flushStream: (stream) => terminalRef.current?.flushStream(stream),
+		flushAll: () => {
+			terminalRef.current?.flushAll();
+			followIfEngaged();
+		},
+		resetStream: (stream) => terminalRef.current?.resetStream(stream),
+		writeMarker: (text) => {
+			terminalRef.current?.writeMarker(text);
+			followIfEngaged();
+		},
+		reset: () => {
+			terminalRef.current?.reset();
+			followRef.current = true;
+			setAtBottom(true);
+		},
+		setScrollback: (lines) => terminalRef.current?.setScrollback(lines)
+	}), []);
+
+	const followIfEngaged = () => {
+		const terminal = terminalRef.current;
+		if (terminal === null || !followRef.current) return;
+		terminal.term.scrollToBottom();
 	};
 
-	// After every buffer update, follow the bottom while disengaged-follow is off.
 	useEffect(() => {
-		const element = scrollRef.current;
-		if (element === null || !followRef.current) return;
-		element.scrollTop = element.scrollHeight;
-	}, [snapshot]);
+		const host = hostRef.current;
+		if (host === null) return undefined;
+		const terminal = createJobTerminal(host);
+		terminalRef.current = terminal;
+
+		const observer = new ResizeObserver(() => terminal.fit());
+		observer.observe(host);
+		terminal.fit();
+
+		// Follow tracking: whichever element xterm uses as its scrollport
+		// (viewport or the version's scrollable element — cover both).
+		const onScroll = () => {
+			let bottom = true;
+			for (const element of terminal.viewportElements()) {
+				bottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 8;
+				if (!bottom) break;
+			}
+			followRef.current = bottom;
+			setAtBottom(bottom);
+		};
+		const scrollElements = terminal.viewportElements();
+		for (const element of scrollElements) element.addEventListener("scroll", onScroll);
+
+		return () => {
+			for (const element of scrollElements) element.removeEventListener("scroll", onScroll);
+			observer.disconnect();
+			terminalRef.current = null;
+			terminal.dispose();
+		};
+	}, []);
 
 	const jumpToBottom = () => {
-		const element = scrollRef.current;
-		if (element === null) return;
+		const terminal = terminalRef.current;
 		followRef.current = true;
 		setAtBottom(true);
-		element.scrollTop = element.scrollHeight;
+		terminal?.term.scrollToBottom();
 	};
 
 	return (
-		<div className="jp-outputScroll" onScroll={onScroll}>
-			<div className="jp-outputInner">
-				{snapshot.omitted > 0 || snapshot.hasGap ? (
-					<div className="jp-divider">{snapshot.omitted > 0 ? t("output.omittedPrefix", { count: snapshot.omitted }) : t("output.full.gap")}</div>
-				) : null}
-				{hasStreams && !hasLines ? <div className="jp-divider">{t("output.empty")}</div> : null}
-				<pre className="jp-outputText">
-					{snapshot.lines.map((line, index) => {
-						const cls = [line.stderr ? "jp-stderrText" : "", line.kind ?? ""].filter(Boolean).join(" ") || undefined;
-						return (
-							<span key={index} className={cls}>{`${line.text}\n`}</span>
-						);
-					})}
-				</pre>
-			</div>
-			{!atBottom ? (
+		<div className="jp-outputScroll">
+			<div className="jp-termHost" ref={hostRef} />
+			{hasOutput ? null : <div className="jp-termEmpty">{t("output.empty")}</div>}
+			{atBottom ? null : (
 				<button type="button" className="jp-floatingFollow" onClick={jumpToBottom}>{t("output.followBottom")}</button>
-			) : null}
+			)}
 		</div>
 	);
-}
+});

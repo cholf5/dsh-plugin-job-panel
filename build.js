@@ -37,6 +37,9 @@ await build({
 	platform: "browser",
 	target: "es2022",
 	jsx: "automatic",
+	// Bundled CSS (the embedded terminal's stylesheet) is inlined as a text
+	// module and injected through the plugin's own style tag at runtime.
+	loader: { ".css": "text" },
 	outfile: "lib/client.js",
 	banner: {
 		js: [

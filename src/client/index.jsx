@@ -19,6 +19,7 @@
 import { NS, en, zh } from "./locale.js";
 import { createDropdownEnhancement } from "./enhance-dropdown.js";
 import { JobPanel } from "./panel.jsx";
+import { XTERM_CSS } from "./terminal.js";
 import { DROPDOWN_CSS, PANEL_CSS, ensureStyles } from "./styles.js";
 
 /** The tab type identity — the package name, the natural value per the seat contract. */
@@ -42,7 +43,7 @@ const inject = ["slots", "locale", "sidebarRight", "sidebarRightTabs"];
  */
 function apply(ctx) {
 	ctx.effect(
-		() => ensureStyles(`${PANEL_CSS}\n${DROPDOWN_CSS}`),
+		() => ensureStyles(`${PANEL_CSS}\n${XTERM_CSS}\n${DROPDOWN_CSS}`),
 		"job-panel: styles",
 	);
 	ctx.effect(

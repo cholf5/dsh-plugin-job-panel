@@ -27,7 +27,7 @@ Development loop after the one restart:
 
 1. **Clickable popover rows.** The official background-jobs popover (`dsh-client-ui-jobs`) renders read-only rows and offers no row-level extension seat, so the rows are enhanced the documented no-seat way: a MutationObserver stamps each row with `data-job-panel-id` (read from the row's React fiber key — the job id), one click listener opens (or re-navigates) the panel tab, and CSS adds the pointer/hover/chevron affordances. Nothing is ever injected into React-managed children.
 2. **The panel.** A page tab type (`kind: job-output`, guide entry included) registered through the official two-stage `sidebarRightTabs` path; the body renders kind chip, live status dot, ticking duration, start/finish/detail facts, the command block (producer label — for bash jobs the command itself) with copy button and the captured spawn cwd, the streaming output view, and the stop control. Page tabs dedupe within their pane, so clicking another job re-navigates the same tab; split panes / float / fullscreen come from the docking kit for free.
-3. **Output.** While the tab is visible the panel polls every 500 ms with its own byte offsets. The DOM keeps at most 2000 lines (an omitted-head notice replaces the rest); stderr lines are styled; auto-follow sticks to the bottom until the user scrolls up (floating jump-back button); lossy reads restart from the retained tail behind a gap marker. When a stream overflowed its in-memory window (64 KB/stream by default) the host keeps a spill file, and a "load full history" button stitches spill head + retained tail with byte-count gap detection.
+3. **Output.** While the tab is visible the panel polls every 500 ms with its own byte offsets and forwards the raw deltas into an **embedded xterm.js terminal** (`@xterm/xterm`, the OpenJS-hosted xterm.js) — a real terminal engine, so SGR colors (16/256/truecolor), OSC, C1 two-byte escapes, bold/dim/italic/underline and carriage-return progress redraws all render natively, with the style state carried across lines exactly like a terminal. The bounded history is the terminal's own scrollback (2000 lines, iterm2-style); auto-follow sticks to the bottom until the user scrolls up (floating jump-back button); lossy reads restart from the retained tail behind a gap marker. When a stream overflowed its in-memory window (64 KB/stream by default) the host keeps a spill file, and a "load full history" button resets the view and stitches spill head + retained tail with byte-count gap detection.
 4. **Stop.** First click arms the button for 3 s, the second confirms. The host calls `ctx.jobs.kill(id, { id: ownerSession })` — the registry duck-types the caller by session id, and the owner session is the one recorded at start time, so the browser never declares authority.
 
 ## How the output works (the interesting part)
@@ -43,10 +43,10 @@ The three exact routes on the shared authenticated `/api` channel serve that dat
 
 ## Terminal colors
 
-Captured streams are plain text **by design**: the harness runs every command with `NO_COLOR=1`, `TERM=dumb`, and no TTY so the model sees clean text. The panel rebuilds the color experience client-side in two layers:
+Captured streams are plain text **by design**: the harness runs every command with `NO_COLOR=1`, `TERM=dumb`, and no TTY so the model sees clean text — and the panel never touches that stream. Colors are rebuilt at presentation time only, in two layers:
 
-1. **Semantic levels (always on).** Plain log lines render by their level vocabulary — `error/failed/fatal/exception/panic` red, `warn/deprecated` amber, `debug/trace/verbose` dimmed — the console-logger convention (.NET, serilog, log4j, …).
-2. **ANSI passthrough (when present).** If a job's output carries real escape sequences, the panel parses the SGR 16-color set plus bold/dim/italic/underline and renders them with the state carried across lines exactly like a terminal (256-color and truecolor sequences are consumed but unmapped).
+1. **Semantic levels (always on).** Plain log lines — the overwhelming default — render by their level vocabulary: `error/failed/fatal/exception/panic` red, `warn/deprecated` amber, `debug/trace/verbose` dimmed, the console-logger convention (.NET, serilog, log4j, …). The classifier only decides; the terminal applies the decision as a presentation-time SGR wrap on lines that carry no escapes of their own.
+2. **The real thing (when present).** If a command's output carries actual escape sequences, the embedded terminal renders them as a terminal would — 16/256-color, truecolor, attributes, cursor-addressed progress redraws — no mapping layer in between.
 
 To see true terminal colors for a specific job, force them in the command itself — the common detectors honor `FORCE_COLOR` over `NO_COLOR`:
 
@@ -56,7 +56,9 @@ CLICOLOR_FORCE=1 ./mytool           # GNU-style tools
 tool --color=always …               # tools with explicit flags
 ```
 
-The model's own `job_output` reads the same captured stream — forcing color on a job whose output the model will read puts escape sequences in front of the model too. That tradeoff belongs to the command author.
+The model's own `job_output` reads the same captured stream — forcing color on a job whose output the model will read puts escape sequences in front of the model too. That tradeoff belongs to the command author; the panel deliberately does not strip or rewrite the stream to change it.
+
+The terminal's theme follows the product: the surface background, foreground, and error/warn palette entries resolve from dsh tokens at mount and re-resolve on theme switches; the rest of the 16-color palette uses mid-brightness values that read on both light and dark surfaces.
 
 ## Known limitations
 
@@ -85,7 +87,7 @@ npm run build        # src/client/* -> lib/client.js
 node --check lib/index.js
 ```
 
-Host half is plain ESM JavaScript with no build step; the client half is built by `build.js`, which wraps the esbuild CJS output into the `window.__ModuleLoader__.load({ id, factory })` shape the browser module system expects. Platform seed modules (`react`, `react/jsx-runtime`, `@deepseek-ai/dsh-client-ui-primitives`) stay external, resolved through the loader's module table.
+Host half is plain ESM JavaScript with no build step; the client half is built by `build.js`, which wraps the esbuild CJS output into the `window.__ModuleLoader__.load({ id, factory })` shape the browser module system expects. Platform seed modules (`react`, `react/jsx-runtime`, `@deepseek-ai/dsh-client-ui-primitives`) stay external, resolved through the loader's module table; the embedded terminal (`@xterm/xterm`, `@xterm/addon-fit` — both MIT, by the xterm.js authors) and its stylesheet are bundled in.
 
 ## License
 

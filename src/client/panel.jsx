@@ -7,10 +7,11 @@
  *
  * Data flow: while the tab is visible the panel polls the host's output route
  * every 500ms with the buffer's own byte offsets (cursor-free reads — the
- * model's job registry read cursor is never touched). Each poll appends the
- * stdout/stderr deltas into a bounded iterm2-style buffer and refreshes the
- * registry snapshot that drives the header. Polling pauses while the tab is
- * hidden and stops one flush cycle after the job settles.
+ * model's job registry read cursor is never touched). Each poll forwards the
+ * raw stdout/stderr deltas into an embedded xterm.js terminal (bounded
+ * scrollback, true terminal rendering) and refreshes the registry snapshot
+ * that drives the header. Polling pauses while the tab is hidden and stops
+ * one flush cycle after the job settles.
  *
  * The stop control arrives in its own commit; this commit owns the output
  * stream view.
@@ -19,13 +20,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
 import { fetchFull, fetchOutput, postStop } from "./api.js";
-import { buildStreamLines, createOutputBuffer } from "./output-buffer.js";
+import { createOutputBuffer } from "./output-buffer.js";
 import { OutputView } from "./output-view.jsx";
 
-/** DOM scrollback cap: at most this many lines stay rendered (iterm2-style). */
-const MAX_LINES = 2000;
-
-/** Hard render cap for the explicit full-history view (spill head can be megabytes). */
+/**
+ * Hard render cap for the explicit full-history view (spill head can be
+ * megabytes): the stitched view keeps at most this many lines, trimming the
+ * head behind a notice.
+ */
 const MAX_FULL_LINES = 20000;
 
 /** Poll cadence while the tab is visible and the job is live. */
@@ -99,14 +101,18 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 
 	/** Latest output response (meta + snapshot). */
 	const [data, setData] = useState(undefined);
-	/** Latest output buffer snapshot (lines, offsets, lossy/spill facts). */
-	const [bufferState, setBufferState] = useState(() => createOutputBuffer({ maxLines: MAX_LINES }).snapshot());
 	/**
-	 * The live buffer, kept outside the poll effect so hiding the panel (or a
-	 * transient unmount) does not lose the accumulated scrollback; recreated
-	 * only when the tab navigates to another job.
+	 * Byte-offset/spill facts of the live buffer. The buffer forwards raw
+	 * deltas to the embedded terminal; only the chrome-driving facts ride
+	 * through React state.
 	 */
-	const bufferRef = useRef(createOutputBuffer({ maxLines: MAX_LINES }));
+	const bufferRef = useRef(null);
+	if (bufferRef.current === null) {
+		bufferRef.current = createOutputBuffer({ fullLineCap: MAX_FULL_LINES });
+	}
+	const [bufferState, setBufferState] = useState(() => bufferRef.current.snapshot());
+	/** The embedded terminal's imperative surface (undefined until mounted). */
+	const terminalRef = useRef(undefined);
 	/**
 	 * Last poll failure: undefined while healthy, otherwise the failing status
 	 * code (or the string "network") — surfaced in the notice so a 404 (host
@@ -136,7 +142,8 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 
 	// Reset everything when the tab navigates to another job.
 	useEffect(() => {
-		bufferRef.current = createOutputBuffer({ maxLines: MAX_LINES });
+		bufferRef.current = createOutputBuffer({ fullLineCap: MAX_FULL_LINES });
+		terminalRef.current?.reset();
 		setData(undefined);
 		setBufferState(bufferRef.current.snapshot());
 		setLoadFailed(undefined);
@@ -161,12 +168,16 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 		let flushPending = false;
 		let inFlight = false;
 		const controller = new AbortController();
-		const buffer = bufferRef.current;
 
 		const tick = async () => {
 			if (cancelled || inFlight) return;
 			inFlight = true;
 			try {
+				const buffer = bufferRef.current;
+				// The terminal view mounts once the first response proves this
+				// job has streams; binding is idempotent, and the buffer holds
+				// writes queued until then so no delta is lost.
+				buffer.bindSink(terminalRef.current);
 				const offsets = buffer.snapshot();
 				const payload = await fetchOutput({
 					jobId,
@@ -230,7 +241,7 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 	const command = meta?.label ?? snapshot?.label;
 	const cwd = meta?.spawn?.cwd;
 	const hasStreams = tapped && (data?.stdout !== null || data?.stderr !== null);
-	const hasLines = bufferState.lines.length > 0;
+	const hasOutput = bufferState.hasOutput;
 
 	const copyCommand = async () => {
 		if (command === undefined) return;
@@ -244,10 +255,9 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 	};
 
 	/**
-	 * Load the spill-backed full history and splice it in front of the live
-	 * tail. Per stream the server returns the spill head (capped) plus the
-	 * whole retained tail with its byte facts; the gap between head and tail
-	 * is detected from those byte counts and rendered as a divider. Polling
+	 * Load the spill-backed full history and replace the view with it. The
+	 * buffer resets the terminal and forwards each stream's spill head (byte-
+	 * gap detected against the retained tail) plus the tail raw; polling
 	 * resumes from the tail's offsets, so nothing after this point is lost.
 	 */
 	const loadFullHistory = async () => {
@@ -255,38 +265,14 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 		setFullState("loading");
 		try {
 			const payload = await fetchFull({ jobId, sessionId });
-			const buffer = bufferRef.current;
-			let lines = [];
-			let omittedCount = 0;
-			let spillNoticeCount = 0;
-			const offsets = { stdout: 0, stderr: 0 };
-			for (const stream of ["stdout", "stderr"]) {
-				const project = payload?.[stream];
-				if (project === null || project === undefined) continue;
-				const stderr = stream === "stderr";
-				const tail = project.tail;
-				if (tail === null || tail === undefined) continue;
-				const spill = project.spill;
-				if (spill !== null && spill !== undefined) {
-					const spillLines = buildStreamLines(spill.text, stderr);
-					lines.push(...spillLines);
-					if (spill.truncated) spillNoticeCount += spillLines.length;
-					// Head covered [0, spill.size); tail covers the retained tail.
-					// A gap exists when the two byte ranges do not meet.
-					const covered = spill.size + buffer.byteLength(tail.text);
-					if (covered < tail.nextOffset - 1024) lines.push({ text: t("output.full.gap"), stderr: false });
-				}
-				lines.push(...buildStreamLines(tail.text, stderr));
-				offsets[stream] = tail.nextOffset;
-			}
-			if (lines.length > MAX_FULL_LINES) {
-				omittedCount += lines.length - MAX_FULL_LINES;
-				lines = lines.slice(lines.length - MAX_FULL_LINES);
-			}
-			buffer.replace(lines, offsets, omittedCount);
-			setBufferState(buffer.snapshot());
-			setSpillNoticeLines(spillNoticeCount);
-			setFullState(spillNoticeCount > 0 ? "truncated" : "done");
+			const result = bufferRef.current.replaceFull(
+				payload,
+				(count) => t("output.omittedPrefix", { count }),
+				t("output.full.gap")
+			);
+			setBufferState(bufferRef.current.snapshot());
+			setSpillNoticeLines(result.spillNoticeCount);
+			setFullState(result.spillNoticeCount > 0 ? "truncated" : "done");
 		} catch {
 			setFullState("failed");
 		}
@@ -390,7 +376,7 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 								</button>
 							) : null}
 						</div>
-						<OutputView snapshot={bufferState} t={t} hasStreams={hasStreams} hasLines={hasLines} />
+						<OutputView ref={terminalRef} t={t} hasOutput={hasOutput} />
 					</>
 				) : null}
 			</div>
