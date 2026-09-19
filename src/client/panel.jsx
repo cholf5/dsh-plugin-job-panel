@@ -256,7 +256,7 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 		try {
 			const payload = await fetchFull({ jobId, sessionId });
 			const buffer = bufferRef.current;
-			const lines = [];
+			let lines = [];
 			let omittedCount = 0;
 			let spillNoticeCount = 0;
 			const offsets = { stdout: 0, stderr: 0 };
