@@ -162,13 +162,13 @@ export function createOutputBuffer({ fullLineCap }) {
 		 * @param {object} payload - the full-history route projection.
 		 * @param {(count: number) => string} omittedText - marker text factory.
 		 * @param {string} gapText - marker text for the spill↔tail byte gap.
-		 * @returns {{ spillNoticeCount: number }} lines the spill head contributed.
+		 * @returns {{ spillNoticeCount: number }} lines the truncated spill
+		 *   head contributes to the final view (after the render cap).
 		 */
 		replaceFull(payload, omittedText, gapText) {
 			if (sink === undefined) return { spillNoticeCount: 0 };
 			sink.reset();
-			let spillNoticeCount = 0;
-			/** @type {Array<{ stream: "stdout" | "stderr", text: string }>} */
+			/** @type {Array<{ stream: "stdout" | "stderr", text: string, gap?: boolean, spillNotice?: boolean }>} */
 			const chunks = [];
 			const offsets = { stdout: 0, stderr: 0 };
 			for (const stream of ["stdout", "stderr"]) {
@@ -178,8 +178,11 @@ export function createOutputBuffer({ fullLineCap }) {
 				if (tail === null || tail === undefined) continue;
 				const spill = project.spill;
 				if (spill !== null && spill !== undefined) {
-					chunks.push({ stream, text: spill.text });
-					if (spill.truncated) spillNoticeCount += countLines(spill.text);
+					// spillNotice: the server already truncated this head; the
+					// toolbar reports the lines it contributes to the view —
+					// counted AFTER the render cap below trims it, so the
+					// number never exceeds what is actually shown.
+					chunks.push({ stream, text: spill.text, spillNotice: spill.truncated === true });
 					// Head covers [0, spill.size); tail covers the retained
 					// tail. A gap exists when the byte ranges do not meet.
 					const covered = spill.size + this.byteLength(tail.text);
@@ -218,6 +221,12 @@ export function createOutputBuffer({ fullLineCap }) {
 				if (chunk.stream === "stderr") stderrOffset = offsets.stderr;
 				else stdoutOffset = offsets.stdout;
 			}
+			// Count the truncated spill head's contribution to the FINAL view
+			// (the cap above may have trimmed part of it away).
+			const spillNoticeCount = chunks.reduce(
+				(sum, chunk) => sum + (chunk.spillNotice && !chunk.gap ? countLines(chunk.text) : 0),
+				0
+			);
 			hasOutput = hasOutput || chunks.some((chunk) => !chunk.gap && chunk.text.length > 0);
 			// The explicitly loaded view should not re-trim below its size.
 			const kept = total - (total - fullLineCap > 0 ? total - fullLineCap : 0);
