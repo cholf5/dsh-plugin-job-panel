@@ -19,7 +19,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node build.js"
+    "build": "node build.js",
+    "test": "node --test test/"
   },
   "engines": {
     "node": ">=22"

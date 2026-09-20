@@ -18,16 +18,17 @@
  * lines ("no errors found", "some errors were suppressed") report on level
  * words rather than state one, and coloring them red is the classic false
  * positive. The single-word allowance deliberately keeps two-word summaries
- * colorable while killing the common false positives: numeric counts
- * ("0 errors, 0 warnings" — the digit cannot start the leading word) and
- * level words buried deeper in a sentence.
+ * colorable ("build fail(s)", "everything failed") while killing the common
+ * false positives: numeric counts ("0 errors, 0 warnings" — the digit
+ * cannot start the leading word) and level words buried deeper in a
+ * sentence.
  */
 const LEVEL_ANCHOR = "^\\s*[>*\\-·✖✔]*\\s*(?:\\[[^\\]]*]\\s*)?(?:\\d{4}[-/]\\d{2}[-/]\\d{2}[T ]\\S*|\\d{1,2}:\\d{2}(?::\\d{2})?(?:\\.\\d+)?)?\\s*(?:(?!no\\b|zero\\b|some\\b|any\\b|without\\b|the\\b|these\\b|those\\b)[A-Za-z][\\w'.-]{0,11}\\s+)?";
 
 /** Semantic level classes, checked in priority order. The level word may
  * stand bare or inside square brackets ("[WARN] …"). */
 const LEVEL_PATTERNS = [
-	["jp-log-error", new RegExp(LEVEL_ANCHOR + "\\[?(?:errors?|failed?|failures?|fatal|exceptions?|unhandled|panic|aborted)\\b\\]?", "i")],
+	["jp-log-error", new RegExp(LEVEL_ANCHOR + "\\[?(?:errors?|fails?|failed?|failures?|fatal|exceptions?|unhandled|panic|aborted)\\b\\]?", "i")],
 	["jp-log-warn", new RegExp(LEVEL_ANCHOR + "\\[?(?:warnings?|warn|deprecated)\\b\\]?", "i")],
 	["jp-log-dim", new RegExp(LEVEL_ANCHOR + "\\[?(?:debug|trace|verbose)\\b\\]?", "i")]
 ];

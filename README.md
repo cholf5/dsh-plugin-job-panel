@@ -83,6 +83,7 @@ The terminal's theme follows the product: the surface background, foreground, an
 
 ```sh
 npm install          # esbuild
+npm test             # node --test over output-buffer / log-line / stream-piper (no framework)
 npm run build        # src/client/* -> lib/client.js
 node --check lib/index.js
 ```
