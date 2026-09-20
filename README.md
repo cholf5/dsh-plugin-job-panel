@@ -8,20 +8,77 @@ Verified against `@deepseek-ai/dsh@0.1.5-rc.2`. MIT licensed.
 
 ## Install
 
-From the npm registry (the package ships its built `lib/`, no build step needed):
+Prerequisites:
+
+- **dsh** reachable — `dsh --version`. If dsh is not a global command (most installs run npx-only), prefix every `dsh` command below with `npx @deepseek-ai/dsh`
+- **pnpm** on PATH (the dsh plugin manager shells out to it): `npm install -g pnpm`
 
 ```sh
-dsh plugin --profile web add dsh-plugin-job-panel -w
+# from the npm registry — the package ships its built lib/, no build step needed
+npx @deepseek-ai/dsh plugin --profile web add dsh-plugin-job-panel -w
+# or straight from GitHub
+npx @deepseek-ai/dsh plugin --profile web add git+https://github.com/cholf5/dsh-plugin-job-panel.git -w
 ```
 
-Or from a local checkout while developing:
+Restart `dsh web` once (bundle additions don't hot-reload), then refresh the browser page.
+
+Verify the host routes are live — with a session cookie, because the fence rejects every `/api` request without one, so a 401 says nothing about registration:
+
+```sh
+curl -s -c /tmp/dsh-cookies.txt "http://127.0.0.1:3080/?token=<token-from-launch-url>" -o /dev/null   # mint a cookie (303)
+curl -s -b /tmp/dsh-cookies.txt "http://127.0.0.1:3080/api/job-panel/output"                          # 400 jobId-validation body = registered; 404 "not found" = not
+```
+
+Then click any row in the session header's background-jobs popover — it opens the panel tab.
+
+<details>
+<summary>No pnpm, and don't want it? Manual fallback</summary>
+
+```sh
+git clone https://github.com/cholf5/dsh-plugin-job-panel.git ~/.dsh/profiles/web/node_modules/dsh-plugin-job-panel
+```
+
+Then make `~/.dsh/profiles/web/cordis.patch.yml` contain (this is the file's final top-level shape — do not blindly append after a `[]` line):
+
+```yaml
+- insert:
+    - id: job-panel
+      name: dsh-plugin-job-panel
+```
+
+The running dsh hot-loads this patch row; refresh the browser afterwards.
+
+</details>
+
+<details>
+<summary>Update / remove</summary>
+
+```sh
+npx @deepseek-ai/dsh plugin --profile web update dsh-plugin-job-panel -w    # or remove dsh-plugin-job-panel -w
+```
+
+Restart `dsh web` afterwards.
+
+</details>
+
+### Troubleshooting
+
+| Symptom | Cause & fix |
+|---|---|
+| `dsh: command not found` | npx-only install — prefix `npx @deepseek-ai/dsh` |
+| `pnpm was not found` (exit 127) | `npm install -g pnpm`, or use the manual fallback above |
+| `ERR_PNPM_ADDING_TO_ROOT` | the `-w` flag was dropped |
+| Installed but rows are not clickable / no panel | restart `dsh web` (bundle layers don't hot-reload), then refresh the page |
+
+### Development loop
+
+To hack on the plugin itself, install from a local checkout (a symlink — source edits apply directly):
 
 ```sh
 dsh plugin --profile web add link:/abs/path/to/dsh-plugin-job-panel -w
-# then restart `dsh web` once — the bundle layer does not hot-reload on install
 ```
 
-Development loop after the one restart:
+After the one restart (bundle installs don't hot-reload):
 
 | Change | Takes effect |
 |---|---|
