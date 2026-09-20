@@ -135,9 +135,10 @@ function buildTheme() {
  * One stream's presentation pipe: assembles complete lines across write
  * calls (a delta ending mid-line stays pending), then hands each line to the
  * terminal — raw when it styles itself, SGR-wrapped for semantic/stderr
- * when it does not. Carriage-return redraws pass through untouched inside
- * their line, so progress bars animate natively.
- * Exported for the bundling-based tests only.
+ * when it does not. Bare-carriage-return partial output (progress redraws
+ * that never print a newline) passes through raw as it arrives, so the
+ * terminal redraws it in place like a real one.
+ * Exported for the tests (test/stream-piper.test.js).
  */
 export class StreamPiper {
 	/** @type {string} partial trailing line carried between writes */
@@ -166,6 +167,17 @@ export class StreamPiper {
 		const parts = (this.#tail + text).split("\n");
 		this.#tail = parts.pop() ?? "";
 		for (const line of parts) this.#writeLine(`${line}\r\n`);
+		// A tail holding a carriage return is a progress redraw in flight
+		// (wget/curl/docker-style bars print bare \r, no newline per frame):
+		// pass it through raw the moment it arrives so the terminal redraws
+		// in place — holding it would buffer the whole bar until the next
+		// newline (nothing visible until settle) and grow the tail without
+		// bound. The presentation wrap is skipped for these frames; they
+		// redraw over themselves anyway.
+		if (this.#tail.includes("\r")) {
+			this.#term.write(this.#tail);
+			this.#tail = "";
+		}
 	}
 
 	/**
