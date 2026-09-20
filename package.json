@@ -20,11 +20,19 @@
   ],
   "scripts": {
     "build": "node build.js",
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "engines": {
     "node": ">=22"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cholf5/dsh-plugin-job-panel.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cholf5/dsh-plugin-job-panel/issues"
+  },
+  "homepage": "https://github.com/cholf5/dsh-plugin-job-panel#readme",
   "keywords": [
     "deepseek-harness",
     "dsh",
@@ -49,10 +57,8 @@
   },
   "author": "cholf5 <cholf5@hotmail.com>",
   "devDependencies": {
-    "esbuild": "^0.25.12"
-  },
-  "dependencies": {
     "@xterm/addon-fit": "0.11.0",
-    "@xterm/xterm": "6.0.0"
+    "@xterm/xterm": "6.0.0",
+    "esbuild": "^0.25.12"
   }
 }

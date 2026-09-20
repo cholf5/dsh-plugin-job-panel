@@ -8,6 +8,14 @@ Verified against `@deepseek-ai/dsh@0.1.5-rc.2`. MIT licensed.
 
 ## Install
 
+From the npm registry (the package ships its built `lib/`, no build step needed):
+
+```sh
+dsh plugin --profile web add dsh-plugin-job-panel -w
+```
+
+Or from a local checkout while developing:
+
 ```sh
 dsh plugin --profile web add link:/abs/path/to/dsh-plugin-job-panel -w
 # then restart `dsh web` once — the bundle layer does not hot-reload on install
@@ -21,7 +29,7 @@ Development loop after the one restart:
 | `lib/*.js` host half | restart `dsh web` |
 | `cordis.patch.yml` | hot-reloaded |
 
-`npm run build` regenerates `lib/client.js` from `src/client/` (esbuild, devDependency). `lib/` is committed so a `link:`-installed profile picks changes up without an install step.
+`npm run build` regenerates `lib/client.js` from `src/client/` (esbuild bundles in `@xterm/xterm` and its stylesheet — every build-time dependency is a devDependency, so registry installs pull in this package only). `lib/` is committed so a `link:`-installed profile picks changes up without an install step.
 
 ## What it does
 
