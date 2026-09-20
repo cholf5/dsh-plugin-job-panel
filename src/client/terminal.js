@@ -268,9 +268,13 @@ export function createJobTerminal(host) {
 		resetStream(stream) {
 			(stream === "stderr" ? stderr : stdout).reset();
 		},
-		/** One dim marker line (gap notices), presentation-only styling. */
+		/** One dim marker line (gap notices), presentation-only styling.
+		 * Starts on a fresh row: a lossy restart kills the pipe's pending
+		 * tail, but a partial line the grid already shows stays — the marker
+		 * must not glue onto it (on the shared grid that partial line may
+		 * even belong to the other stream). */
 		writeMarker(text) {
-			term.write(`${ESC}[2m${text}${ESC}[22m\r\n`);
+			term.write(`\r\n${ESC}[2m${text}${ESC}[22m\r\n`);
 		},
 		reset() {
 			stdout.reset();

@@ -17,10 +17,15 @@ import { createJobTerminal } from "./terminal.js";
  * @param {object} props
  * @param {(key: string, params?: object) => string} props.t - namespace translator.
  * @param {boolean} props.hasOutput - whether any stream text reached the terminal.
+ * @param {(surface: object | undefined) => void} props.onReady - called with the
+ *   terminal surface on mount and undefined on unmount; the buffer binds its
+ *   sink to this lifecycle (binding must not poll the ref from the poll loop —
+ *   an interval-timed ref read sees the previous view's dying handle or React's
+ *   post-unmount null, which either loses deltas or poisons the buffer).
  * @param {object} props.ref - imperative surface: writeStream / flushStream / flushAll /
  *   resetStream / writeMarker / reset / setScrollback.
  */
-export const OutputView = forwardRef(function OutputView({ t, hasOutput }, ref) {
+export const OutputView = forwardRef(function OutputView({ t, hasOutput, onReady }, ref) {
 	const hostRef = useRef(null);
 	const terminalRef = useRef(null);
 	const followRef = useRef(true);
@@ -60,6 +65,10 @@ export const OutputView = forwardRef(function OutputView({ t, hasOutput }, ref) 
 		if (host === null) return undefined;
 		const terminal = createJobTerminal(host);
 		terminalRef.current = terminal;
+		// Bind the buffer's sink here, at mount — the only moment the surface
+		// is known to be live. Queued deltas (a poll can land before this
+		// view mounts) drain on bind, so nothing is lost.
+		onReady(terminal);
 
 		const observer = new ResizeObserver(() => terminal.fit());
 		observer.observe(host);
@@ -82,6 +91,7 @@ export const OutputView = forwardRef(function OutputView({ t, hasOutput }, ref) 
 		return () => {
 			for (const element of scrollElements) element.removeEventListener("scroll", onScroll);
 			observer.disconnect();
+			onReady(undefined);
 			terminalRef.current = null;
 			terminal.dispose();
 		};

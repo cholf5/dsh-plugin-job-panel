@@ -90,12 +90,20 @@ export function createOutputBuffer({ fullLineCap }) {
 	return {
 		/**
 		 * Bind the terminal surface and drain anything queued before it
-		 * existed. Idempotent; rebinding the same surface is a no-op.
+		 * existed. Idempotent; rebinding the same surface is a no-op. A
+		 * nullish handle unbinds (view unmounted) — later writes re-queue.
+		 * React nulls a forwarded ref on unmount, so a nullish handle is a
+		 * normal lifecycle event, never a sink: binding it would poison the
+		 * buffer (every append would throw on the null surface).
 		 * @param {object | undefined} handle - imperative terminal surface.
 		 * @returns {void}
 		 */
 		bindSink(handle) {
-			if (handle === undefined || handle === sink) return;
+			if (handle === sink) return;
+			if (handle === null || handle === undefined) {
+				sink = undefined;
+				return;
+			}
 			sink = handle;
 			drain();
 		},

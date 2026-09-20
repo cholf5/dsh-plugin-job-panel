@@ -17,7 +17,7 @@
  * stream view.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
 import { fetchFull, fetchOutput, postStop } from "./api.js";
 import { createOutputBuffer } from "./output-buffer.js";
@@ -111,6 +111,14 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 		bufferRef.current = createOutputBuffer({ fullLineCap: MAX_FULL_LINES });
 	}
 	const [bufferState, setBufferState] = useState(() => bufferRef.current.snapshot());
+	/**
+	 * Sink binding for the output view: called by OutputView on mount (with
+	 * the live terminal surface) and on unmount (with undefined). The buffer
+	 * holds writes queued until then, so no delta is lost.
+	 */
+	const bindSink = useCallback((surface) => {
+		bufferRef.current.bindSink(surface);
+	}, []);
 	/** The embedded terminal's imperative surface (undefined until mounted). */
 	const terminalRef = useRef(undefined);
 	/**
@@ -174,10 +182,6 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 			inFlight = true;
 			try {
 				const buffer = bufferRef.current;
-				// The terminal view mounts once the first response proves this
-				// job has streams; binding is idempotent, and the buffer holds
-				// writes queued until then so no delta is lost.
-				buffer.bindSink(terminalRef.current);
 				const offsets = buffer.snapshot();
 				const payload = await fetchOutput({
 					jobId,
@@ -376,7 +380,7 @@ export function JobPanel({ useTabInfo, t, sessionId: rawSessionId }) {
 								</button>
 							) : null}
 						</div>
-						<OutputView ref={terminalRef} t={t} hasOutput={hasOutput} />
+						<OutputView ref={terminalRef} t={t} hasOutput={hasOutput} onReady={bindSink} />
 					</>
 				) : null}
 			</div>
