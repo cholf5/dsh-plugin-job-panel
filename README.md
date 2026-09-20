@@ -1,10 +1,37 @@
+<div align="center">
+
 # dsh-plugin-job-panel
 
-A right-sidebar job panel for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) web GUI: click a row in the session header's background-jobs popover to inspect the job — its command, its live terminal output with iterm2-style bounded scrollback, its full spill-backed history — and stop it.
+**A right-sidebar job panel for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) web GUI**
 
-Dual-face plugin: a Node half (observation tap + exact `/api` routes) and a browser half (panel body + popover row enhancement).
+Click a row in the session header's background-jobs popover → inspect the command, follow its live terminal output, stop the job.
+
+[![npm](https://img.shields.io/npm/v/dsh-plugin-job-panel)](https://www.npmjs.com/package/dsh-plugin-job-panel)
+[![node](https://img.shields.io/node/v/dsh-plugin-job-panel)](https://www.npmjs.com/package/dsh-plugin-job-panel)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+![verified](https://img.shields.io/badge/verified-dsh%200.1.5--rc.2-blue)
+
+<img src="assets/demo.gif" alt="Demo: clicking a background-jobs popover row opens the job panel with its live terminal output" width="720">
+
+*Click a popover row → the panel tab opens with the live output; full history loads from the spill file; the stop control arms, then confirms.*
+
+</div>
+
+---
+
+Dual-face plugin: a **Node half** (observation tap + three exact `/api` routes) and a **browser half** (panel body + popover row enhancement) in one package.
 
 Verified against `@deepseek-ai/dsh@0.1.5-rc.2`. MIT licensed.
+
+## Highlights
+
+| | |
+|---|---|
+| 🖱 **Clickable popover rows** | The official background-jobs popover renders read-only rows — every row becomes a click target that opens (or re-navigates) the panel tab |
+| 🖥 **A real terminal engine** | Output renders in an embedded [xterm.js](https://xtermjs.org/) terminal: SGR colors (16/256/truecolor), OSC, bold/dim/italic/underline, carriage-return progress redraws |
+| 🎨 **Semantic log colors** | Plain text is colored at presentation time by level vocabulary — `error` red, `warn` amber, `debug` dim — never touching the captured stream the model reads |
+| 📜 **Full spill-backed history** | Streams past the 64 KB window are kept in a host spill file; one button stitches spill head + retained tail with byte-gap detection |
+| ⏹ **Deliberate stop** | First click arms for 3 s, second confirms; the host kills via the owner session recorded at start time |
 
 ## Install
 
@@ -61,41 +88,25 @@ Restart `dsh web` afterwards.
 
 </details>
 
-### Troubleshooting
-
-| Symptom | Cause & fix |
-|---|---|
-| `dsh: command not found` | npx-only install — prefix `npx @deepseek-ai/dsh` |
-| `pnpm was not found` (exit 127) | `npm install -g pnpm`, or use the manual fallback above |
-| `ERR_PNPM_ADDING_TO_ROOT` | the `-w` flag was dropped |
-| Installed but rows are not clickable / no panel | restart `dsh web` (bundle layers don't hot-reload), then refresh the page |
-
-### Development loop
-
-To hack on the plugin itself, install from a local checkout (a symlink — source edits apply directly):
-
-```sh
-dsh plugin --profile web add link:/abs/path/to/dsh-plugin-job-panel -w
-```
-
-After the one restart (bundle installs don't hot-reload):
-
-| Change | Takes effect |
-|---|---|
-| `lib/client.js` (run `npm run build`) | hot-swapped by dsh-client-hmr, no restart |
-| `lib/*.js` host half | restart `dsh web` |
-| `cordis.patch.yml` | hot-reloaded |
-
-`npm run build` regenerates `lib/client.js` from `src/client/` (esbuild bundles in `@xterm/xterm` and its stylesheet — every build-time dependency is a devDependency, so registry installs pull in this package only). `lib/` is committed so a `link:`-installed profile picks changes up without an install step.
-
 ## What it does
 
 1. **Clickable popover rows.** The official background-jobs popover (`dsh-client-ui-jobs`) renders read-only rows and offers no row-level extension seat, so the rows are enhanced the documented no-seat way: a MutationObserver stamps each row with `data-job-panel-id` (read from the row's React fiber key — the job id), one click listener opens (or re-navigates) the panel tab, and CSS adds the pointer/hover/chevron affordances. Nothing is ever injected into React-managed children.
 2. **The panel.** A page tab type (`kind: job-output`, guide entry included) registered through the official two-stage `sidebarRightTabs` path; the body renders kind chip, live status dot, ticking duration, start/finish/detail facts, the command block (producer label — for bash jobs the command itself) with copy button and the captured spawn cwd, the streaming output view, and the stop control. Page tabs dedupe within their pane, so clicking another job re-navigates the same tab; split panes / float / fullscreen come from the docking kit for free.
-3. **Output.** While the tab is visible the panel polls every 500 ms with its own byte offsets and forwards the raw deltas into an **embedded xterm.js terminal** (`@xterm/xterm`, the OpenJS-hosted xterm.js) — a real terminal engine, so SGR colors (16/256/truecolor), OSC, C1 two-byte escapes, bold/dim/italic/underline and carriage-return progress redraws all render natively, with the style state carried across lines exactly like a terminal. The bounded history is the terminal's own scrollback (2000 lines, iterm2-style); auto-follow sticks to the bottom until the user scrolls up (floating jump-back button); lossy reads restart from the retained tail behind a gap marker. When a stream overflowed its in-memory window (64 KB/stream by default) the host keeps a spill file, and a "load full history" button resets the view and stitches spill head + retained tail with byte-count gap detection.
+3. **Output.** While the tab is visible the panel polls every 500 ms with its own byte offsets and forwards the raw deltas into the embedded xterm.js terminal — a real terminal engine, so SGR colors (16/256/truecolor), OSC, C1 two-byte escapes, bold/dim/italic/underline and carriage-return progress redraws all render natively, with the style state carried across lines exactly like a terminal. The bounded history is the terminal's own scrollback (2000 lines, iterm2-style); auto-follow sticks to the bottom until the user scrolls up (floating jump-back button); lossy reads restart from the retained tail behind a gap marker. When a stream overflowed its in-memory window (64 KB/stream by default) the host keeps a spill file, and a "load full history" button resets the view and stitches spill head + retained tail with byte-count gap detection.
 4. **Stop.** First click arms the button for 3 s, the second confirms. The host calls `ctx.jobs.kill(id, { id: ownerSession })` — the registry duck-types the caller by session id, and the owner session is the one recorded at start time, so the browser never declares authority.
 
 ## How the output works (the interesting part)
+
+```text
+        browser half                                   host half
+┌───────────────────────────┐                  ┌─────────────────────────────────┐
+│  popover rows (clickable) │   GET /api/…     │  JobTap wraps (behavior-safe):  │
+│  panel tab                │  ──────────────▶ │    ctx.jobs.start               │
+│   └ embedded xterm.js     │   fenced /api    │    ctx.subprocess.spawn         │
+│     + semantic colors     │   channel        │  3 exact routes:                │
+│  stop control (arm→ok)    │  ◀────────────── │    output / full / stop         │
+└───────────────────────────┘                  └─────────────────────────────────┘
+```
 
 The job registry contract exposes stream output through **one consuming cursor per job** (`ctx.jobs.read()`), owned by the model's `job_output` tool; the official README lists "independent observers need a cursor or snapshot API" as a known limitation. Reading through the registry would steal the model's deltas and suppress its completion notices.
 
@@ -121,7 +132,8 @@ CLICOLOR_FORCE=1 ./mytool           # GNU-style tools
 tool --color=always …               # tools with explicit flags
 ```
 
-The model's own `job_output` reads the same captured stream — forcing color on a job whose output the model will read puts escape sequences in front of the model too. That tradeoff belongs to the command author; the panel deliberately does not strip or rewrite the stream to change it.
+> [!NOTE]
+> The model's own `job_output` reads the same captured stream — forcing color on a job whose output the model will read puts escape sequences in front of the model too. That tradeoff belongs to the command author; the panel deliberately does not strip or rewrite the stream to change it.
 
 The terminal's theme follows the product: the surface background, foreground, and error/warn palette entries resolve from dsh tokens at mount and re-resolve on theme switches; the rest of the 16-color palette uses mid-brightness values that read on both light and dark surfaces.
 
@@ -144,14 +156,39 @@ The terminal's theme follows the product: the surface background, foreground, an
 | Sidebar seat | `sidebar.right.pane.tab` keyed seat, `useTabInfo` hook prop | `src/client/index.jsx` |
 | `/api` fence | unauthenticated probes answer 401 (route-independent in this version — the old "404 = absent" heuristic does not hold) | — |
 
+## Troubleshooting
+
+| Symptom | Cause & fix |
+|---|---|
+| `dsh: command not found` | npx-only install — prefix `npx @deepseek-ai/dsh` |
+| `pnpm was not found` (exit 127) | `npm install -g pnpm`, or use the manual fallback above |
+| `ERR_PNPM_ADDING_TO_ROOT` | the `-w` flag was dropped |
+| Installed but rows are not clickable / no panel | restart `dsh web` (bundle layers don't hot-reload), then refresh the page |
+
 ## Development
 
+To hack on the plugin itself, install from a local checkout (a symlink — source edits apply directly):
+
 ```sh
-npm install          # esbuild
-npm test             # node --test over output-buffer / log-line / stream-piper (no framework)
+dsh plugin --profile web add link:/abs/path/to/dsh-plugin-job-panel -w
+```
+
+After the one restart (bundle installs don't hot-reload):
+
+| Change | Takes effect |
+|---|---|
+| `lib/client.js` (run `npm run build`) | hot-swapped by dsh-client-hmr, no restart |
+| `lib/*.js` host half | restart `dsh web` |
+| `cordis.patch.yml` | hot-reloaded |
+
+```sh
+npm install          # esbuild + @xterm (all devDependencies)
+npm test             # node --test: output-buffer / log-line / stream-piper / host routes / bundle factory
 npm run build        # src/client/* -> lib/client.js
 node --check lib/index.js
 ```
+
+`npm run build` regenerates `lib/client.js` from `src/client/` (esbuild bundles in `@xterm/xterm` and its stylesheet — every build-time dependency is a devDependency, so registry installs pull in this package only). `lib/` is committed so a `link:`-installed profile picks changes up without an install step.
 
 Host half is plain ESM JavaScript with no build step; the client half is built by `build.js`, which wraps the esbuild CJS output into the `window.__ModuleLoader__.load({ id, factory })` shape the browser module system expects. Platform seed modules (`react`, `react/jsx-runtime`, `@deepseek-ai/dsh-client-ui-primitives`) stay external, resolved through the loader's module table; the embedded terminal (`@xterm/xterm`, `@xterm/addon-fit` — both MIT, by the xterm.js authors) and its stylesheet are bundled in.
 
