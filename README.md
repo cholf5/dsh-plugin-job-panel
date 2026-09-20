@@ -1,3 +1,9 @@
+<div align="right">
+
+English | [简体中文](README.zh-CN.md)
+
+</div>
+
 <div align="center">
 
 # dsh-plugin-job-panel
