@@ -65,6 +65,10 @@ function apply(ctx) {
 			// opening another job navigates the same tab to the new job id.
 			title: () => t("tab.title"),
 			guide: [{
+				// Required since dsh 0.1.7 (SidebarRightGuideEntry.id): the
+				// entry's stable identity within this provider, delivered to
+				// the guide card as `entryId`.
+				id: "job-output",
 				order: GUIDE_ORDER,
 				title: () => t("guide.title"),
 				description: () => t("guide.description")

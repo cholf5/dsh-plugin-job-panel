@@ -15,7 +15,7 @@
 [![npm](https://img.shields.io/npm/v/dsh-plugin-job-panel)](https://www.npmjs.com/package/dsh-plugin-job-panel)
 [![node](https://img.shields.io/node/v/dsh-plugin-job-panel)](https://www.npmjs.com/package/dsh-plugin-job-panel)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-![verified](https://img.shields.io/badge/verified-dsh%200.1.5--rc.2-blue)
+![verified](https://img.shields.io/badge/verified-dsh%200.1.7--alpha.2-blue)
 
 <img src="assets/demo.gif" alt="演示：点击后台任务弹窗中的某一行，打开带实时终端输出的任务面板" width="720">
 
@@ -27,7 +27,7 @@
 
 双面插件（dual-face）：一个包内同时包含 **Node 半边**（观察探针 + 三条精确 `/api` 路由）与**浏览器半边**（面板主体 + 弹窗行增强）。
 
-已针对 `@deepseek-ai/dsh@0.1.5-rc.2` 验证。MIT 许可。
+已针对 `@deepseek-ai/dsh@0.1.7-alpha.2` 验证。MIT 许可。
 
 ## 亮点
 
@@ -96,7 +96,7 @@ npx @deepseek-ai/dsh plugin --profile web update dsh-plugin-job-panel -w    # �
 
 ## 它做了什么
 
-1. **弹窗行可点击。** 官方"后台任务"弹窗（`dsh-client-ui-jobs`）渲染只读行，且不提供行级扩展席位，因此这里采用文档记载的"无席位"增强方式：MutationObserver 为每一行打上 `data-job-panel-id`（从该行的 React fiber key 读取 —— 即任务 id），一个点击监听器负责打开（或重新定位）面板页签，CSS 提供指针/悬停/箭头视觉提示。绝不向 React 管理的子节点中注入任何元素。
+1. **弹窗行可点击。** 官方"后台任务"弹窗（`dsh-client-ui-jobs`）不提供行级扩展席位，因此这里采用文档记载的"无席位"增强方式：MutationObserver 为每一行打上 `data-job-panel-id`（任务 id，从该行的 React fiber 上读取 —— 自 dsh 0.1.7 起是 `JobItem` 包装 fiber 上的 `props.job.id`；0.1.5 的"带 key 的 `<li>`"形态作为回退继续支持），一个点击监听器负责打开（或重新定位）面板页签 —— 但行内原生的终止按钮保持原行为，不会触发导航 —— CSS 提供指针/悬停/箭头视觉提示。绝不向 React 管理的子节点中注入任何元素。
 2. **面板。** 一种页面页签类型（`kind: job-output`，含引导区入口），通过官方两段式 `sidebarRightTabs` 路径注册；面板主体渲染 kind 徽标、实时状态点、跳动的时长、启动/结束/详情信息、命令块（生产者标签 —— 对 bash 任务即命令本身，带复制按钮和记录下的 spawn cwd）、流式输出视图，以及停止控件。页面页签在其所在窗格内去重，因此点击另一个任务会重新定位同一个页签；分屏 / 浮动 / 全屏则由停靠套件免费奉送。
 3. **输出。** 页签可见期间，面板以自己的字节偏移每 500 ms 轮询一次，并把原始增量转发给嵌入式 xterm.js 终端 —— 真正的终端引擎，因此 SGR 颜色（16/256/真彩色）、OSC、C1 双字节转义、粗体/暗淡/斜体/下划线以及回车重绘的进度条都原生渲染，样式状态跨行延续，与真实终端完全一致。有界历史即终端自身的回滚缓冲区（2000 行，iterm2 风格）；自动跟随始终贴住底部，直到用户向上滚动（此时出现浮动跳回按钮）；发生有损读取时，会带着缺口标记从保留尾段重新开始。当某个流的输出超出其内存窗口（默认每流 64 KB）时，宿主会保留一份溢出文件，"加载完整历史"按钮会重置视图，并把溢出文件前段与保留尾段按字节计数缺口检测拼接起来。
 4. **停止。** 第一次点击让按钮进入 3 秒待命，第二次点击才确认。宿主调用 `ctx.jobs.kill(id, { id: ownerSession })` —— 注册表按会话 id 对调用者做鸭子类型判别，而属主会话是启动时记录的那个，所以浏览器从不自行声明权限。
@@ -158,7 +158,7 @@ tool --color=always …               # 带显式开关的工具
 | `jobs-local.start()` | 同步调用 `spec.run()` | `lib/tap.js` 的关联逻辑 |
 | `SubprocessHandle.collected` | 基于偏移的读取器，`readFrom(byteOffset)` | `lib/routes.js` |
 | `ctx.jobs.kill/get` | 按 `caller.id` 与属主 id 做鸭子类型判别 | `lib/routes.js` |
-| 弹窗 DOM | `<ul aria-label="后台任务"/"Background jobs">`，行 fiber key = 任务 id | `src/client/enhance-dropdown.js` |
+| 弹窗 DOM | `<ul aria-label="后台任务"/"Background jobs">`；行身份 = `JobItem` fiber 上的 `props.job.id`（0.1.7；旧版：带 key 的 `<li>` fiber key），终止按钮 = 行内没有 `aria-expanded` 的那个按钮 | `src/client/enhance-dropdown.js` |
 | 侧边栏席位 | 按 `sidebar.right.pane.tab` 键控的席位，`useTabInfo` hook 属性 | `src/client/index.jsx` |
 | `/api` 围栏 | 未认证探测一律返回 401（本版本与具体路由无关 —— 旧的"404 = 未注册"启发式不再成立） | — |
 

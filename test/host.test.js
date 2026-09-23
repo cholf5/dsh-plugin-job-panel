@@ -15,6 +15,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { apply } from "../lib/index.js";
 
+/**
+ * $DSH_HOME is pinned for the whole test process, at module scope: the host
+ * half's diagnostics updates are fire-and-forget, so a write scheduled inside
+ * a test can land after the test's own cleanup — an env var deleted in
+ * `t.after` would make that late write resolve to the real `~/.dsh` and merge
+ * test noise into the live diagnostics record.
+ */
+const testHome = await mkdtemp(join(tmpdir(), "dsh-job-panel-test-"));
+process.env.DSH_HOME = testHome;
+test.after(async () => {
+	await rm(testHome, { recursive: true, force: true });
+});
+
 /** A stub cordis ctx: effect runs immediately; connection captures routes. */
 function stubCtx() {
 	const registered = [];
@@ -33,14 +46,7 @@ function stubCtx() {
 	return { ctx, registered };
 }
 
-test("apply registers the three /api routes through connection", async (t) => {
-	const home = await mkdtemp(join(tmpdir(), "dsh-job-panel-test-"));
-	process.env.DSH_HOME = home;
-	t.after(async () => {
-		delete process.env.DSH_HOME;
-		await rm(home, { recursive: true, force: true });
-	});
-
+test("apply registers the three /api routes through connection", async () => {
 	const { ctx, registered } = stubCtx();
 	await apply(ctx);
 
@@ -52,14 +58,7 @@ test("apply registers the three /api routes through connection", async (t) => {
 	}
 });
 
-test("the output route validates its query before touching the registry", async (t) => {
-	const home = await mkdtemp(join(tmpdir(), "dsh-job-panel-test-"));
-	process.env.DSH_HOME = home;
-	t.after(async () => {
-		delete process.env.DSH_HOME;
-		await rm(home, { recursive: true, force: true });
-	});
-
+test("the output route validates its query before touching the registry", async () => {
 	const { ctx, registered } = stubCtx();
 	await apply(ctx);
 	const output = registered.find((route) => route.path === "/api/job-panel/output");

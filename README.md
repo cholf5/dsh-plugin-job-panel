@@ -15,7 +15,7 @@ Click a row in the session header's background-jobs popover → inspect the comm
 [![npm](https://img.shields.io/npm/v/dsh-plugin-job-panel)](https://www.npmjs.com/package/dsh-plugin-job-panel)
 [![node](https://img.shields.io/node/v/dsh-plugin-job-panel)](https://www.npmjs.com/package/dsh-plugin-job-panel)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-![verified](https://img.shields.io/badge/verified-dsh%200.1.5--rc.2-blue)
+![verified](https://img.shields.io/badge/verified-dsh%200.1.7--alpha.2-blue)
 
 <img src="assets/demo.gif" alt="Demo: clicking a background-jobs popover row opens the job panel with its live terminal output" width="720">
 
@@ -27,7 +27,7 @@ Click a row in the session header's background-jobs popover → inspect the comm
 
 Dual-face plugin: a **Node half** (observation tap + three exact `/api` routes) and a **browser half** (panel body + popover row enhancement) in one package.
 
-Verified against `@deepseek-ai/dsh@0.1.5-rc.2`. MIT licensed.
+Verified against `@deepseek-ai/dsh@0.1.7-alpha.2`. MIT licensed.
 
 ## Highlights
 
@@ -96,7 +96,7 @@ Restart `dsh web` afterwards.
 
 ## What it does
 
-1. **Clickable popover rows.** The official background-jobs popover (`dsh-client-ui-jobs`) renders read-only rows and offers no row-level extension seat, so the rows are enhanced the documented no-seat way: a MutationObserver stamps each row with `data-job-panel-id` (read from the row's React fiber key — the job id), one click listener opens (or re-navigates) the panel tab, and CSS adds the pointer/hover/chevron affordances. Nothing is ever injected into React-managed children.
+1. **Clickable popover rows.** The official background-jobs popover (`dsh-client-ui-jobs`) offers no row-level extension seat, so the rows are enhanced the documented no-seat way: a MutationObserver stamps each row with `data-job-panel-id` (the job id, read off the row's React fiber — `props.job.id` on the `JobItem` wrapper since dsh 0.1.7; the keyed-`<li>` shape of 0.1.5 stays supported as a fallback), one click listener opens (or re-navigates) the panel tab — except presses on the row's native kill control, which stay native — and CSS adds the pointer/hover/chevron affordances. Nothing is ever injected into React-managed children.
 2. **The panel.** A page tab type (`kind: job-output`, guide entry included) registered through the official two-stage `sidebarRightTabs` path; the body renders kind chip, live status dot, ticking duration, start/finish/detail facts, the command block (producer label — for bash jobs the command itself) with copy button and the captured spawn cwd, the streaming output view, and the stop control. Page tabs dedupe within their pane, so clicking another job re-navigates the same tab; split panes / float / fullscreen come from the docking kit for free.
 3. **Output.** While the tab is visible the panel polls every 500 ms with its own byte offsets and forwards the raw deltas into the embedded xterm.js terminal — a real terminal engine, so SGR colors (16/256/truecolor), OSC, C1 two-byte escapes, bold/dim/italic/underline and carriage-return progress redraws all render natively, with the style state carried across lines exactly like a terminal. The bounded history is the terminal's own scrollback (2000 lines, iterm2-style); auto-follow sticks to the bottom until the user scrolls up (floating jump-back button); lossy reads restart from the retained tail behind a gap marker. When a stream overflowed its in-memory window (64 KB/stream by default) the host keeps a spill file, and a "load full history" button resets the view and stitches spill head + retained tail with byte-count gap detection.
 4. **Stop.** First click arms the button for 3 s, the second confirms. The host calls `ctx.jobs.kill(id, { id: ownerSession })` — the registry duck-types the caller by session id, and the owner session is the one recorded at start time, so the browser never declares authority.
@@ -158,7 +158,7 @@ The terminal's theme follows the product: the surface background, foreground, an
 | `jobs-local.start()` | calls `spec.run()` synchronously | `lib/tap.js` correlation |
 | `SubprocessHandle.collected` | offset-based readers, `readFrom(byteOffset)` | `lib/routes.js` |
 | `ctx.jobs.kill/get` | caller duck-typed by `caller.id` vs owner id | `lib/routes.js` |
-| Popover DOM | `<ul aria-label="后台任务"/"Background jobs">`, row fiber key = job id | `src/client/enhance-dropdown.js` |
+| Popover DOM | `<ul aria-label="后台任务"/"Background jobs">`; row identity = `props.job.id` on the `JobItem` fiber (0.1.7; legacy: keyed `<li>` fiber key), kill button = the row button without `aria-expanded` | `src/client/enhance-dropdown.js` |
 | Sidebar seat | `sidebar.right.pane.tab` keyed seat, `useTabInfo` hook prop | `src/client/index.jsx` |
 | `/api` fence | unauthenticated probes answer 401 (route-independent in this version — the old "404 = absent" heuristic does not hold) | — |
 
