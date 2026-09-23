@@ -1,0 +1,22 @@
+{
+  "sop": "dsh-plugin-upgrade",
+  "sopRev": 1,
+  "name": "dsh-plugin-job-panel",
+  "dshVersion": "0.1.7-alpha.2",
+  "verifiedAt": "2026-09-23",
+  "pluginHead": "5a21602",
+  "treeClean": true,
+  "seams": [
+    "jobs-local.start-synchronous-run",
+    "SubprocessHandle.collected-offset-readers",
+    "ctx.jobs.caller-duck-typing",
+    "client:popover-row-identity-JobItem-fiber",
+    "client:sidebar-tab-seat",
+    "api-fence-401-route-independent"
+  ],
+  "verification": { "tests": true },
+  "fixCommits": ["1724607 fix(client): track dsh 0.1.7 popover row identity (JobItem fiber) and guide entry id"],
+  "tag": "verified-dsh/v0.1.7-alpha.2",
+  "backfilled": true,
+  "note": "Marker format introduced 2026-09-23, after the same-day field upgrade. npm test re-run today: 39 pass / 0 fail. Ladder rungs beyond tests are not individually recorded and must be re-earned by one WIDE re-verify (SKILL.md §4.0)."
+}
