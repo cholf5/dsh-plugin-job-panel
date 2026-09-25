@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-job-panel",
   "description": "A right-sidebar job panel for the dsh web GUI: click a row in the background-jobs popover to inspect the command, follow its terminal output (iterm2-style bounded scrollback), and stop it.",
-  "version": "0.1.0",
+  "version": "0.1.7-alpha.2",
   "type": "module",
   "license": "MIT",
   "main": "lib/index.js",
